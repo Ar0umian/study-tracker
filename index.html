@@ -587,3 +587,275 @@ window.studySelfTest=function(){
   }finally{state=backup;_idx=null;}
   console.log(r.join('\n')); return r;
 };
+
+/* ===================== الجزء 3: لوحة اليوم وإدارة المواد ===================== */
+const cnt=a=>(a&&a.length?a.length:0)+' درس';
+const card=(title,inner)=>'<div class="card"><h3>'+title+'</h3>'+inner+'</div>';
+const rowsHtml=r=>r.map(x=>'<div class="row"><span class="label">'+x[0]+'</span><span class="val">'+x[1]+'</span></div>').join('');
+const secTitle=t=>'<div style="font-weight:700;color:var(--brand-d);margin-top:8px">'+t+'</div>';
+const dayLabel=s=>DAYS_AR[dow(s)]+' '+parseDate(s).getDate()+' '+MONTHS_AR[parseDate(s).getMonth()];
+
+/* قائمة دروس؛ showPrep=true تضيف خانة ملاحظة تحضير لكل درس */
+function lesList(arr,showPrep,emptyMsg){
+  if(!arr||!arr.length) return '<p class="small">'+(emptyMsg||'لا شيء')+'</p>';
+  return '<ul class="les-list">'+arr.map(l=>
+    '<li><b>'+esc(l.title)+'</b><span class="sub">'+esc(l.subjName)+' — '+esc(l.chapTitle)+'</span>'+
+    (showPrep?'<div class="prep-note"><input data-prep="'+esc(l.id)+'" value="'+esc(l.prep)+'" placeholder="ملاحظة تحضير (محاكي، مختبر، مصطلحات...)"></div>':'')+
+    '</li>').join('')+'</ul>';
+}
+function quickInfo(T){
+  if(T.poolSize==null) return '';
+  if(!T.poolSize) return '<p class="small">لا يوجد رصيد قديم بعد، تبدأ المراجعة السريعة بعد خروج دروس من دائرة الماضي القريب.</p>';
+  return '<p class="small">رصيد المراجعة السريعة: '+T.poolSize+' درس — حصة اليوم '+T.qQuota+
+    (T.qQuota>=T.poolSize?'، أي الرصيد كله، ثم يلتف المؤشر ويعيد الدوران.':'، والمؤشر يلتف تلقائياً من البداية عند النهاية.')+'</p>';
+}
+/* هدف الأسبوع لكل مادة نشطة */
+function goalsCard(){
+  const S=cloneS(state); ensureWeek(S,todayStr());
+  const rows=[];
+  state.subjects.forEach(s=>{
+    const tot=totalLessons(s); if(!tot) return;
+    const p=progOf(s);
+    if(s.status==='paused'){rows.push([esc(s.name),'<span class="tag amber">متوقفة مؤقتاً</span>']);return;}
+    if(p>=tot){rows.push([esc(s.name),'<span class="tag violet">منتهية: مراجعة سريعة دائمة</span>']);return;}
+    const tgt=Math.min(S.wk[s.id]===undefined?p:S.wk[s.id],tot);
+    const left=Math.max(0,tgt-p);
+    rows.push([esc(s.name),left>0?('يتبقى '+left+' درس من شابتر الأسبوع'):'<span class="tag teal">اكتمل هدف الأسبوع</span>']);
+  });
+  return rows.length?card('🎯 هدف الأسبوع',rowsHtml(rows)):'';
+}
+
+function renderToday(){
+  const t=todayStr(),k=kind(t),rec=state.days[t],done=!!(rec&&rec.done);
+  const before=t<state.settings.startDate,hasSub=state.subjects.length>0;
+  $('#todayHeader').textContent=fmtAr(t);
+
+  /* ---------- اللافتة العلوية ---------- */
+  const missed=missedDays();
+  let banner='';
+  if(before) banner='<div class="banner info">🗓️ تبدأ الخطة يوم '+fmtAr(state.settings.startDate)+'</div>';
+  else if(!hasSub) banner='<div class="banner info">👋 أضيفي أول مادة من تبويب «المواد» لتبدأ الجدولة.</div>';
+  else if(k==='fri') banner='<div class="banner rest">🌿 الجمعة يوم تخفيف وراحة، لا دروس جديدة ولا مراجعة ثقيلة.</div>';
+  else if(done) banner='<div class="banner rest">✅ تم إنجاز مهام اليوم، تقبّل الله منكِ.</div>';
+  else if(k==='sat') banner='<div class="banner info">🔄 السبت: مراجعة أسبوعية شاملة.</div>';
+  else if(missed.length) banner='<div class="banner late">⏳ فاتكِ '+missed.length+' يوم دراسة، وأُعيد توزيع الدروس غير المنجزة على الأيام المتبقية تلقائياً. يمكنكِ أيضاً تعويض يوم فائت.</div>';
+  else banner='<div class="banner">📍 مهام اليوم جاهزة، بالتوفيق إن شاء الله.</div>';
+  $('#todayBanner').innerHTML=banner;
+
+  /* ---------- البطاقات ---------- */
+  let cards='';
+  if(!hasSub){
+    cards=card('🚀 البداية',
+      '<p>1) أضيفي مادة واختاري إيقاعها الأسبوعي.<br>2) أضيفي شباتر المادة والصقي أسماء الدروس سطراً بسطر.<br>3) ارجعي هنا وستجدين دروس اليوم جاهزة.</p>'+
+      '<button class="btn" data-go="subjects">الذهاب إلى المواد</button>');
+  }else if(!before){
+    if(k==='work'){
+      const T=done?{newL:lessonsOf(rec.ids),near:lessonsOf(rec.near),quick:lessonsOf(rec.quick),poolSize:null}:todayTask();
+      cards+=card('📖 دروس اليوم الجديدة',lesList(T.newL,false,'لا دروس جديدة اليوم: اكتمل هدف الأسبوع أو لا توجد دروس مضافة.'));
+      cards+=goalsCard();
+      cards+=card('🔁 الماضي القريب (تثبيت)',lesList(T.near,false,'لا يوجد ماضٍ قريب بعد.'));
+      cards+=card('⚡ المراجعة السريعة',lesList(T.quick,false,'لا شيء للمراجعة السريعة اليوم.')+quickInfo(T));
+    }else if(k==='sat'){
+      const T=done?{week:lessonsOf(rec.week),quick:lessonsOf(rec.quick),poolSize:null}:todayTask();
+      cards+=card('🔄 مراجعة دروس الأسبوع',lesList(T.week,false,'لا دروس منجزة هذا الأسبوع.'));
+      cards+=card('⚡ مراجعة جزء من القديم',lesList(T.quick,false,'لا يوجد رصيد قديم بعد.')+quickInfo(T));
+    }else{
+      cards+=card('🌿 يوم راحة',rowsHtml([['المهام','لا شيء اليوم']])+
+        '<p class="small">لا تُرحَّل إلى الجمعة أي دروس. استعدّي لمراجعة السبت.</p>');
+    }
+    /* التحضير: السبت يعرض تحضير الأحد فقط بدون نافذة الأسبوع الممتدة */
+    const P=prepData();
+    let prep=secTitle('ورد '+(k==='sat'?'الأحد':'الغد')+' — '+dayLabel(P.tomorrowDate))+
+             lesList(P.tomorrow,true,'لا دروس مجدولة لذلك اليوم.');
+    if(k!=='sat'){
+      prep+=secTitle('تحضير الأسبوع المقبل ('+cnt(P.nextWeek)+')')+
+            lesList(P.nextWeek,false,'لا دروس مجدولة للأسبوع المقبل.');
+    }
+    cards+=card('🌙 التحضير',prep);
+  }
+  $('#todayCards').innerHTML=cards;
+
+  /* ---------- الأزرار ---------- */
+  const cb=$('#confirmBtn'),mb=$('#makeupBtn'),ub=$('#undoBtn');
+  const anyDone=Object.keys(state.days).some(d=>state.days[d]&&state.days[d].done);
+  cb.style.display=(k==='fri')?'none':'block';
+  cb.disabled=done||before||!hasSub;
+  cb.textContent=done?'✅ تم التأكيد اليوم':(k==='sat'?'✅ تأكيد إنجاز المراجعة الأسبوعية':'✅ تأكيد إنجاز اليوم');
+  mb.disabled=!missed.length||!hasSub;
+  mb.textContent=missed.length?('⏳ تعويض يوم فائت ('+missed.length+')'):'⏳ لا أيام فائتة';
+  ub.disabled=!anyDone;
+
+  let hint='';
+  if(before) hint='لم تبدأ الخطة بعد.';
+  else if(!hasSub) hint='أضيفي مادة أولاً.';
+  else if(k==='fri') hint='استمتعي بيوم الراحة 🌿';
+  else if(done) hint='يمكنكِ التراجع عن آخر تأكيد إن ضغطتِ عليه بالخطأ.';
+  else hint='اضغطي التأكيد بعد إنهاء كل المهام أعلاه. وإن لم تؤكّدي اليوم، يُعاد توزيع الدروس غير المنجزة تلقائياً على الأيام المتبقية.';
+  $('#confirmHint').textContent=hint;
+}
+
+/* ---------- واجهة المواد ---------- */
+const openChaps=new Set();            // الشباتر المفتوحة (لتبقى مفتوحة بعد إعادة الرسم)
+function renderSubjects(){
+  const box=$('#subjectsList'); if(!box) return;
+  /* حفظ ما كُتب في الحقول وموضع التركيز قبل إعادة الرسم */
+  const vals={};
+  $$('input[id],textarea[id]',box).forEach(e=>{if(e.value) vals[e.id]=e.value;});
+  const fid=(document.activeElement&&box.contains(document.activeElement))?document.activeElement.id:'';
+
+  if(!state.subjects.length){
+    box.innerHTML='<div class="card"><p class="small">لا توجد مواد بعد. أضيفي أول مادة من النموذج أعلاه.</p></div>';
+    return;
+  }
+  box.innerHTML=state.subjects.map(s=>{
+    const tot=totalLessons(s),p=progOf(s),pct=tot?Math.round(p/tot*100):0;
+    let start=0;
+    const chaps=s.chapters.map(c=>{
+      const n=c.lessons.length,dn=clamp(p-start,0,n),fin=n>0&&dn>=n;
+      const html='<details class="chap" data-cid="'+c.id+'"'+(openChaps.has(c.id)?' open':'')+'>'+
+        '<summary>'+esc(c.title)+' <span class="small">('+dn+'/'+n+')</span>'+(fin?' <span class="tag teal">مكتمل</span>':'')+'</summary>'+
+        c.lessons.map((l,li)=>{
+          const d=start+li<p;
+          return '<div class="les'+(d?' done':'')+'"><span title="'+esc(l.prep)+'">'+(d?'✅ ':'⬜ ')+esc(l.title)+(l.prep?' <span class="small">📝</span>':'')+'</span>'+
+            '<span><button class="btn alt sm" data-act="prep" data-l="'+l.id+'">📝</button> '+
+            '<button class="btn warn sm" data-act="dellesson" data-s="'+s.id+'" data-l="'+l.id+'">حذف</button></span></div>';
+        }).join('')+
+        '<div class="add-chap"><label>إضافة دروس إلى هذا الشابتر (سطر لكل درس)</label>'+
+        '<textarea id="al-'+c.id+'"></textarea>'+
+        '<div class="actions"><button class="btn alt sm" data-act="addlessons" data-s="'+s.id+'" data-c="'+c.id+'">إضافة الدروس</button>'+
+        '<button class="btn warn sm" data-act="delchap" data-s="'+s.id+'" data-c="'+c.id+'">حذف الشابتر</button></div></div>'+
+        '</details>';
+      start+=n; return html;
+    }).join('');
+    const paceOpts=[1,2,3,4].map(n=>'<option value="'+n+'"'+(s.pace===n?' selected':'')+'>'+(n===1?'شابتر واحد أسبوعياً':n+' شباتر أسبوعياً')+'</option>').join('');
+    return '<div class="card" data-sid="'+s.id+'">'+
+      '<div class="subj-head"><h3>'+esc(s.name)+'</h3>'+
+      '<span>'+(s.status==='paused'?'<span class="tag amber">متوقفة مؤقتاً</span>':(tot&&p>=tot?'<span class="tag violet">منتهية</span>':'<span class="tag teal">نشطة</span>'))+'</span></div>'+
+      '<div class="bar"><i style="width:'+pct+'%"></i></div>'+
+      '<div class="small">'+p+' من '+tot+' درس ('+pct+'%) — '+s.chapters.length+' شباتر'+
+      (tot&&p>=tot?' — المادة مكتملة وتنتقل للمراجعة السريعة الدائمة':'')+'</div>'+
+      '<div class="actions"><select data-pace="'+s.id+'" style="width:auto">'+paceOpts+'</select>'+
+      '<button class="btn alt sm" data-act="toggle" data-s="'+s.id+'">'+(s.status==='paused'?'▶️ استئناف':'⏸️ إيقاف مؤقت')+'</button>'+
+      '<button class="btn alt sm" data-act="rename" data-s="'+s.id+'">✏️ إعادة تسمية</button>'+
+      '<button class="btn warn sm" data-act="delsubj" data-s="'+s.id+'">🗑️ حذف المادة</button></div>'+
+      chaps+
+      '<div class="add-chap"><b>➕ شابتر جديد</b>'+
+      '<label>اسم الشابتر</label><input id="chT-'+s.id+'" placeholder="مثال: الفصل الأول: مقدمة">'+
+      '<label>أسماء الدروس (الصقيها سطراً بسطر)</label><textarea id="chL-'+s.id+'" placeholder="درس 1&#10;درس 2&#10;درس 3"></textarea>'+
+      '<div class="actions"><button class="btn sm" data-act="addchap" data-s="'+s.id+'">إضافة الشابتر</button></div></div>'+
+      '</div>';
+  }).join('');
+
+  /* استرجاع ما كُتب والتركيز */
+  Object.keys(vals).forEach(id=>{const e=document.getElementById(id); if(e) e.value=vals[id];});
+  if(fid){const e=document.getElementById(fid); if(e&&e.focus) e.focus();}
+}
+
+/* ---------- الرسم الشامل والتبويبات ---------- */
+function renderAll(){
+  renderToday();
+  renderSubjects();
+  if(typeof renderCalendar==='function') renderCalendar();
+  if(typeof renderSettings==='function') renderSettings();
+}
+function showView(v){
+  $$('#tabs button').forEach(b=>b.classList.toggle('active',b.dataset.view===v));
+  $$('.view').forEach(s=>s.classList.toggle('active',s.id==='view-'+v));
+  renderAll();
+  window.scrollTo(0,0);
+}
+
+/* ---------- ربط أحداث لوحة اليوم ---------- */
+function bindToday(){
+  $$('#tabs button').forEach(b=>b.addEventListener('click',()=>showView(b.dataset.view)));
+
+  $('#confirmBtn').addEventListener('click',()=>{
+    if(confirmDay(todayStr())) toast('تم تأكيد مهام اليوم ✅');
+    renderAll();
+  });
+  $('#makeupBtn').addEventListener('click',()=>{
+    const m=missedDays(); if(!m.length) return;
+    if(!confirm('سيُنجَز عمل يوم إضافي الآن ويُسجَّل على: '+fmtAr(m[0])+'\nهل أنتِ متأكدة؟')) return;
+    const d=makeupDay();
+    toast(d?('تم تعويض '+fmtAr(d)):'تعذّر التعويض');
+    renderAll();
+  });
+  $('#undoBtn').addEventListener('click',()=>{
+    if(!confirm('سيتم التراجع عن آخر تأكيد مسجّل، هل أنتِ متأكدة؟')) return;
+    const d=undoLast();
+    toast(d?('تم التراجع عن '+fmtAr(d)):'لا يوجد ما يُتراجع عنه');
+    renderAll();
+  });
+
+  /* ملاحظات التحضير + زر الذهاب إلى المواد (تفويض أحداث) */
+  $('#todayCards').addEventListener('change',e=>{
+    const i=e.target.closest('input[data-prep]'); if(!i) return;
+    setPrep(i.dataset.prep,i.value); toast('حُفظت ملاحظة التحضير');
+  });
+  $('#todayCards').addEventListener('click',e=>{
+    const b=e.target.closest('[data-go]'); if(b) showView(b.dataset.go);
+  });
+
+  /* تحديث تلقائي عند العودة للتبويب */
+  document.addEventListener('visibilitychange',()=>{if(!document.hidden) renderAll();});
+}
+
+/* ---------- ربط أحداث المواد ---------- */
+function bindSubjects(){
+  $('#subjAddBtn').addEventListener('click',()=>{
+    const s=addSubject($('#subjName').value,$('#subjPace').value);
+    if(!s){toast('اكتبي اسم المادة');return;}
+    $('#subjName').value=''; toast('أُضيفت المادة ✅'); renderAll();
+  });
+  const box=$('#subjectsList');
+
+  /* تذكّر الشباتر المفتوحة (حدث toggle لا يتصاعد، فنلتقطه في مرحلة الالتقاط) */
+  box.addEventListener('toggle',e=>{
+    const d=e.target; if(!d.matches||!d.matches('details.chap')) return;
+    if(d.open) openChaps.add(d.dataset.cid); else openChaps.delete(d.dataset.cid);
+  },true);
+
+  box.addEventListener('change',e=>{
+    const sel=e.target.closest('select[data-pace]'); if(!sel) return;
+    setPace(sel.dataset.pace,sel.value); toast('تم تعديل الإيقاع، وأُعيد حساب الجدول'); renderAll();
+  });
+
+  box.addEventListener('click',e=>{
+    const b=e.target.closest('[data-act]'); if(!b) return;
+    const act=b.dataset.act,sid=b.dataset.s,cid=b.dataset.c,lid=b.dataset.l;
+    if(act==='toggle'){
+      const s=subj(sid); if(!s) return;
+      setStatus(sid,s.status==='paused'?'active':'paused');
+    }else if(act==='rename'){
+      const s=subj(sid); if(!s) return;
+      const n=prompt('الاسم الجديد للمادة',s.name); if(n===null) return;
+      renameSubject(sid,n);
+    }else if(act==='delsubj'){
+      const s=subj(sid); if(!s) return;
+      if(!confirm('سيتم حذف مادة «'+s.name+'» بكل شباتر ودروسها وتقدّمها. هل أنتِ متأكدة؟')) return;
+      deleteSubject(sid); toast('تم حذف المادة');
+    }else if(act==='addchap'){
+      const tEl=$('#chT-'+sid),lEl=$('#chL-'+sid);
+      const r=addChapter(sid,tEl.value,lEl.value);
+      if(r<0){toast('اكتبي اسم الشابتر أو أسماء الدروس');return;}
+      tEl.value=''; lEl.value='';
+      toast('أُضيف الشابتر بـ '+r+' درس ✅');
+    }else if(act==='addlessons'){
+      const el=$('#al-'+cid);
+      const r=addLessons(sid,cid,el.value);
+      if(r<0){toast('تعذّرت الإضافة: اكتبي دروساً، ولا يمكن الإضافة لشابتر خلف نقطة تقدّمكِ');return;}
+      el.value=''; openChaps.add(cid); toast('أُضيفت '+r+' دروس ✅');
+    }else if(act==='dellesson'){
+      if(!confirm('حذف هذا الدرس؟')) return;
+      deleteLesson(sid,lid);
+    }else if(act==='delchap'){
+      if(!confirm('حذف الشابتر بكل دروسه؟')) return;
+      deleteChapter(sid,cid); openChaps.delete(cid);
+    }else if(act==='prep'){
+      const l=idx().byId[lid]; if(!l) return;
+      const n=prompt('ملاحظة التحضير لهذا الدرس (محاكي، مختبر، مصطلحات...)',l.prep||''); if(n===null) return;
+      setPrep(lid,n); toast('حُفظت الملاحظة');
+    }
+    renderAll();
+  });
+}
