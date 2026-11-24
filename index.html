@@ -1,0 +1,589 @@
+<!DOCTYPE html>
+<html lang="ar" dir="rtl">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>متتبع المذاكرة والمراجعة</title>
+<style>
+:root{
+  --bg:#f3f5fa; --card:#ffffff; --ink:#222b3a; --muted:#6a7488;
+  --brand:#3a56a8; --brand-d:#27407f; --brand-l:#e4eaf8;
+  --teal:#1f8a82; --teal-l:#ddf2ef;
+  --amber:#b7791f; --amber-l:#fbefd5;
+  --red:#b4493f; --red-l:#f8e3e0;
+  --violet:#6b4bb0; --violet-l:#ebe4f7;
+  --line:#dfe3ee; --radius:14px;
+}
+*{box-sizing:border-box}
+html,body{margin:0;padding:0}
+body{background:var(--bg);color:var(--ink);font-family:"Noto Naskh Arabic","Geeza Pro","Segoe UI",Tahoma,sans-serif;font-size:17px;line-height:1.7}
+header{background:var(--brand-d);color:#fff;padding:18px 16px 0;text-align:center}
+header h1{margin:0 0 4px;font-size:1.5rem}
+header .sub{opacity:.85;font-size:.9rem;margin-bottom:12px}
+nav{display:flex;gap:6px;justify-content:center;flex-wrap:wrap}
+nav button{background:transparent;border:0;color:#cfd9f3;font:inherit;padding:10px 16px;cursor:pointer;border-radius:10px 10px 0 0}
+nav button.active{background:var(--bg);color:var(--brand-d);font-weight:700}
+main{max-width:980px;margin:0 auto;padding:18px 14px 80px}
+.view{display:none}
+.view.active{display:block}
+
+/* البطاقات */
+.card{background:var(--card);border:1px solid var(--line);border-radius:var(--radius);padding:16px 18px;margin-bottom:14px;box-shadow:0 1px 3px rgba(0,0,0,.04)}
+.card h3{margin:0 0 8px;font-size:1.1rem;color:var(--brand-d)}
+.card .row{display:flex;justify-content:space-between;gap:10px;padding:6px 0;border-bottom:1px dashed var(--line)}
+.card .row:last-child{border-bottom:0}
+.card .label{color:var(--muted)}
+.card .val{font-weight:700;text-align:left}
+.grid2{display:grid;grid-template-columns:repeat(auto-fit,minmax(300px,1fr));gap:14px}
+.tag{display:inline-block;padding:2px 10px;border-radius:999px;font-size:.8rem;background:var(--brand-l);color:var(--brand-d)}
+.tag.teal{background:var(--teal-l);color:var(--teal)}
+.tag.amber{background:var(--amber-l);color:var(--amber)}
+.tag.red{background:var(--red-l);color:var(--red)}
+.tag.violet{background:var(--violet-l);color:var(--violet)}
+.banner{padding:12px 16px;border-radius:var(--radius);margin-bottom:14px;background:var(--amber-l);color:#6b4d10}
+.banner.rest{background:var(--teal-l);color:#14625c}
+.banner.late{background:var(--red-l);color:var(--red)}
+.banner.info{background:var(--brand-l);color:var(--brand-d)}
+.small{font-size:.85rem;color:var(--muted)}
+
+/* الأزرار */
+.btn{font:inherit;border:0;border-radius:12px;padding:10px 20px;cursor:pointer;background:var(--brand);color:#fff}
+.btn:hover{background:var(--brand-d)}
+.btn.alt{background:var(--brand-l);color:var(--brand-d)}
+.btn.warn{background:var(--red-l);color:var(--red)}
+.btn.sm{padding:3px 12px;font-size:.85rem}
+.btn.big{display:block;width:100%;font-size:1.25rem;padding:16px;font-weight:700;margin-top:6px}
+.btn:disabled{opacity:.5;cursor:not-allowed}
+.actions{display:flex;gap:10px;flex-wrap:wrap;margin-top:10px}
+
+/* النماذج */
+label{display:block;margin:10px 0 4px;color:var(--muted);font-size:.9rem}
+input,select,textarea{width:100%;font:inherit;padding:9px 12px;border:1px solid var(--line);border-radius:10px;background:#fff;color:var(--ink)}
+textarea{min-height:90px;resize:vertical}
+
+/* قائمة الدروس في لوحة اليوم */
+.les-list{list-style:none;margin:0;padding:0}
+.les-list li{padding:7px 0;border-bottom:1px dashed var(--line)}
+.les-list li:last-child{border-bottom:0}
+.les-list .sub{display:block;font-size:.8rem;color:var(--muted)}
+.prep-note{margin-top:4px}
+.prep-note input{font-size:.9rem;padding:5px 10px}
+
+/* المواد والشباتر والدروس */
+.subj-head{display:flex;justify-content:space-between;align-items:center;gap:10px;flex-wrap:wrap}
+.subj-head h3{margin:0}
+.bar{height:10px;border-radius:999px;background:var(--brand-l);overflow:hidden;margin:8px 0 4px}
+.bar>i{display:block;height:100%;background:var(--teal);width:0}
+.chap{border:1px solid var(--line);border-radius:12px;padding:8px 12px;margin-top:8px;background:#fafbfe}
+.chap summary{cursor:pointer;font-weight:700}
+.les{display:flex;justify-content:space-between;gap:8px;padding:4px 0;border-bottom:1px dashed var(--line);font-size:.95rem}
+.les:last-child{border-bottom:0}
+.les.done{color:var(--teal)}
+.add-chap{margin-top:12px;padding-top:10px;border-top:1px dashed var(--line)}
+
+/* التقويم */
+.cal-head{display:flex;align-items:center;justify-content:space-between;gap:8px;margin-bottom:10px;flex-wrap:wrap}
+.cal-head h3{margin:0}
+.cal-grid{display:grid;grid-template-columns:repeat(7,1fr);gap:6px}
+.cal-dow{text-align:center;font-size:.8rem;color:var(--muted)}
+.cal-cell{min-height:64px;border:1px solid var(--line);border-radius:10px;background:#fff;padding:4px 6px;cursor:pointer;font-size:.85rem;display:flex;flex-direction:column;justify-content:space-between}
+.cal-cell .n{font-weight:700}
+.cal-cell .ic{text-align:left;font-size:1.05rem}
+.cal-cell.empty{background:transparent;border:0;cursor:default}
+.cal-cell.done{background:var(--teal-l)}
+.cal-cell.today{outline:2px solid var(--brand);background:#fbfcff}
+.cal-cell.late{background:var(--red-l)}
+.cal-cell.fri{background:#eef5f3}
+.cal-cell.sat{background:var(--violet-l)}
+.cal-cell.sel{box-shadow:0 0 0 3px var(--amber)}
+.legend{display:flex;flex-wrap:wrap;gap:8px;margin-top:10px;font-size:.85rem;color:var(--muted)}
+
+#toast{position:fixed;bottom:20px;left:50%;transform:translateX(-50%);background:var(--brand-d);color:#fff;padding:10px 22px;border-radius:999px;opacity:0;pointer-events:none;transition:opacity .3s;z-index:9}
+#toast.show{opacity:1}
+@media(max-width:560px){.cal-cell{min-height:52px;font-size:.75rem}.card{padding:14px}}
+</style>
+</head>
+<body>
+<header>
+  <h1>📚 متتبع المذاكرة والمراجعة</h1>
+  <div class="sub" id="todayHeader"></div>
+  <nav id="tabs">
+    <button data-view="today" class="active">اليوم</button>
+    <button data-view="subjects">المواد</button>
+    <button data-view="calendar">التقويم</button>
+    <button data-view="settings">الإعدادات</button>
+  </nav>
+</header>
+
+<main>
+  <!-- لوحة اليوم -->
+  <section id="view-today" class="view active">
+    <div id="todayBanner"></div>
+    <div id="todayCards" class="grid2"></div>
+    <div id="todayActions">
+      <button id="confirmBtn" class="btn big">✅ تأكيد إنجاز اليوم</button>
+      <div class="actions">
+        <button id="makeupBtn" class="btn alt">⏳ تعويض يوم فائت</button>
+        <button id="undoBtn" class="btn warn">↩️ تراجع عن آخر تأكيد</button>
+      </div>
+      <p class="small" id="confirmHint"></p>
+    </div>
+  </section>
+
+  <!-- المواد والشباتر والدروس -->
+  <section id="view-subjects" class="view">
+    <div class="card">
+      <h3>➕ إضافة مادة جديدة</h3>
+      <label>اسم المادة</label>
+      <input id="subjName" placeholder="مثال: أساسيات الشبكات">
+      <label>الإيقاع الأسبوعي (عدد الشباتر في الأسبوع)</label>
+      <select id="subjPace">
+        <option value="1" selected>شابتر واحد أسبوعياً (الافتراضي)</option>
+        <option value="2">شابتران أسبوعياً</option>
+        <option value="3">3 شباتر أسبوعياً</option>
+        <option value="4">4 شباتر أسبوعياً</option>
+      </select>
+      <div class="actions"><button id="subjAddBtn" class="btn">إضافة المادة</button></div>
+      <p class="small">بعد إضافة المادة تظهر لها بطاقة تضيفين فيها الشباتر، والصقي أسماء الدروس سطراً بسطر.</p>
+    </div>
+    <div id="subjectsList"></div>
+  </section>
+
+  <!-- التقويم -->
+  <section id="view-calendar" class="view">
+    <div class="card">
+      <div class="cal-head">
+        <div class="actions" style="margin:0">
+          <button id="calPrev" class="btn alt">→ السابق</button>
+          <button id="calNext" class="btn alt">التالي ←</button>
+        </div>
+        <h3 id="calTitle"></h3>
+        <select id="calMode" style="width:auto">
+          <option value="month">شهري</option>
+          <option value="week">أسبوعي</option>
+        </select>
+      </div>
+      <div id="calGrid" class="cal-grid"></div>
+      <div class="legend">
+        <span>✅ منجز</span><span>📍 اليوم</span><span>📅 مجدول</span>
+        <span>⏳ فائت</span><span>🌿 الجمعة خفيف</span><span>🔄 السبت مراجعة أسبوعية</span>
+      </div>
+    </div>
+    <div class="card" id="dayDetail"><span class="small">اضغطي على أي يوم لعرض تفاصيله.</span></div>
+  </section>
+
+  <!-- الإعدادات -->
+  <section id="view-settings" class="view">
+    <div class="card">
+      <h3>إعدادات الخطة</h3>
+      <label>تاريخ بداية الخطة</label>
+      <input id="setStartDate" type="date">
+      <label>حجم الماضي القريب (آخر كم درس يبقى في دائرة التثبيت)</label>
+      <input id="setNear" type="number" min="1" max="30">
+      <label>حصة المراجعة السريعة اليومية (عدد الدروس في أيام الدراسة)</label>
+      <input id="setQuick" type="number" min="1" max="40">
+      <label>حصة المراجعة السريعة في يوم السبت (عدد الدروس)</label>
+      <input id="setSatCap" type="number" min="1" max="80">
+      <div class="actions"><button id="saveSettings" class="btn">حفظ الإعدادات</button></div>
+      <p class="small">إيقاع كل مادة يُعدَّل من تبويب «المواد». تغيير الإعدادات يعيد حساب الأيام القادمة فقط، والأيام المنجزة تبقى كما هي.</p>
+    </div>
+    <div class="card">
+      <h3>النسخ الاحتياطي</h3>
+      <div class="actions">
+        <button id="exportBtn" class="btn alt">⬇️ تصدير JSON</button>
+        <label class="btn alt" style="margin:0;cursor:pointer">⬆️ استيراد JSON
+          <input id="importFile" type="file" accept="application/json" style="display:none">
+        </label>
+        <button id="resetBtn" class="btn warn">🗑️ مسح كل البيانات</button>
+      </div>
+    </div>
+  </section>
+</main>
+
+<div id="toast"></div>
+
+<script>
+// ===== نهاية الجزء 1: سيُكمل الجزء 2 من هنا =====
+
+/* ===================== الجزء 2: محرك الجدولة والمراجعة ===================== */
+'use strict';
+const KEY='studyTrackerV1';          // مفتاح مستقل عن تطبيق القرآن حتى لا تختلط البيانات
+const DAYS_AR=['الأحد','الاثنين','الثلاثاء','الأربعاء','الخميس','الجمعة','السبت'];
+const MONTHS_AR=['يناير','فبراير','مارس','أبريل','مايو','يونيو','يوليو','أغسطس','سبتمبر','أكتوبر','نوفمبر','ديسمبر'];
+
+const $=(s,r=document)=>r.querySelector(s);
+const $$=(s,r=document)=>[...r.querySelectorAll(s)];
+const pad=n=>String(n).padStart(2,'0');
+const clamp=(n,a,b)=>Math.min(b,Math.max(a,n));
+const esc=s=>String(s==null?'':s).replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
+function toast(m){
+  const t=$('#toast'); if(!t) return;
+  t.textContent=m; t.classList.add('show');
+  clearTimeout(toast._t); toast._t=setTimeout(()=>t.classList.remove('show'),2200);
+}
+
+/* ---------- التواريخ (توقيت محلي، الظهر لتفادي مشاكل التوقيت الصيفي) ---------- */
+const fmtDate=d=>d.getFullYear()+'-'+pad(d.getMonth()+1)+'-'+pad(d.getDate());
+const parseDate=s=>{const [y,m,d]=s.split('-').map(Number);return new Date(y,m-1,d,12,0,0);};
+const todayStr=()=>fmtDate(new Date());
+const addDays=(s,n)=>{const d=parseDate(s);d.setDate(d.getDate()+n);return fmtDate(d);};
+const dow=s=>parseDate(s).getDay();                 // 0=أحد ... 4=خميس، 5=جمعة، 6=سبت
+const kind=s=>{const w=dow(s);return w<=4?'work':(w===5?'fri':'sat');};
+const diffDays=(a,b)=>Math.round((parseDate(b)-parseDate(a))/86400000);
+const fmtAr=s=>{const d=parseDate(s);return DAYS_AR[d.getDay()]+' '+d.getDate()+' '+MONTHS_AR[d.getMonth()]+' '+d.getFullYear();};
+const weekStart=s=>addDays(s,-dow(s));              // بداية الأسبوع = يوم الأحد
+
+/* ---------- الحالة والتخزين ---------- */
+function defaultState(){
+  return {v:1,updatedAt:0,
+    settings:{startDate:todayStr(),near:5,quick:6,satCap:15},
+    seq:0,        // عداد المعرّفات (مادة/شابتر/درس)
+    subjects:[],  // [{id,seq,name,pace,status,chapters:[{id,title,lessons:[{id,title,prep}]}]}]
+    prog:{},      // subjId -> عدد الدروس المنجزة بالترتيب (من أول المادة)
+    log:[],       // [{date,ids:[lessonId]}] سجل الدروس الجديدة المنجزة بالترتيب
+    ptr:0,        // مؤشر المراجعة السريعة الدوّار (مفتاح رقمي للدرس الأخير الذي روجع)
+    wk:{},        // subjId -> فهرس نهاية هدف هذا الأسبوع في المادة
+    wkWeek:'',    // تاريخ بداية الأسبوع الذي حُسب له wk
+    days:{}       // التاريخ -> سجل اليوم المنجز
+  };
+}
+function normalizeState(o){
+  const d=defaultState(); if(!o||typeof o!=='object') return d;
+  const st=Object.assign({},d.settings,o.settings||{});
+  st.near=clamp(parseInt(st.near)||5,1,30);
+  st.quick=clamp(parseInt(st.quick)||6,1,40);
+  st.satCap=clamp(parseInt(st.satCap)||15,1,80);
+  if(!/^\d{4}-\d{2}-\d{2}$/.test(st.startDate||'')) st.startDate=todayStr();
+  let seq=Math.max(0,parseInt(o.seq)||0);
+  const used=new Set();
+  const subjects=(Array.isArray(o.subjects)?o.subjects:[]).filter(s=>s&&typeof s==='object').map(s=>{
+    let sq=parseInt(s.seq); if(!sq||used.has(sq)) sq=++seq; used.add(sq); seq=Math.max(seq,sq);
+    return {id:String(s.id||('s'+sq)),seq:sq,name:String(s.name||'مادة'),
+      pace:clamp(parseInt(s.pace)||1,1,4),status:s.status==='paused'?'paused':'active',
+      chapters:(Array.isArray(s.chapters)?s.chapters:[]).filter(c=>c&&typeof c==='object').map(c=>({
+        id:String(c.id||('c'+(++seq))),title:String(c.title||'شابتر'),
+        lessons:(Array.isArray(c.lessons)?c.lessons:[]).filter(l=>l&&typeof l==='object').map(l=>({
+          id:String(l.id||('l'+(++seq))),title:String(l.title||'درس'),prep:String(l.prep||'')}))}))};
+  });
+  const prog={}; Object.keys(o.prog||{}).forEach(k=>{prog[k]=Math.max(0,parseInt(o.prog[k])||0);});
+  const wk={}; Object.keys(o.wk||{}).forEach(k=>{wk[k]=Math.max(0,parseInt(o.wk[k])||0);});
+  return {v:1,updatedAt:Number(o.updatedAt)||0,settings:st,seq,subjects,prog,wk,
+    wkWeek:/^\d{4}-\d{2}-\d{2}$/.test(o.wkWeek||'')?o.wkWeek:'',
+    log:Array.isArray(o.log)?o.log.filter(x=>x&&x.date&&Array.isArray(x.ids)):[],
+    ptr:Number(o.ptr)||0,
+    days:(o.days&&typeof o.days==='object')?o.days:{}};
+}
+function load(){
+  try{const raw=localStorage.getItem(KEY);return normalizeState(raw?JSON.parse(raw):null);}
+  catch(e){return defaultState();}
+}
+let state=load();
+let _idx=null;                                     // فهرس الدروس المخزّن مؤقتاً
+function save(opts){
+  opts=opts||{};
+  if(!opts.keepStamp) state.updatedAt=Date.now();
+  _idx=null;
+  try{localStorage.setItem(KEY,JSON.stringify(state));}
+  catch(e){toast('تعذّر الحفظ في المتصفح');}
+}
+function resetAll(){state=defaultState();save();}
+
+/* ---------- فهرس الدروس: لكل مادة قائمة مسطّحة مرتبة (شابتر بعد شابتر) ---------- */
+function idx(){
+  if(_idx) return _idx;
+  const flat={},byId={};
+  state.subjects.forEach(s=>{
+    const arr=[];
+    s.chapters.forEach((c,ci)=>c.lessons.forEach(l=>{
+      const o={id:l.id,title:l.title,prep:l.prep||'',chapId:c.id,chapTitle:c.title,chapIdx:ci,
+               subjId:s.id,subjName:s.name,subjSeq:s.seq,i:arr.length};
+      o.key=s.seq*100000+o.i;                      // مفتاح ثابت يرتّب المراجعة الدوّارة
+      arr.push(o); byId[o.id]=o;
+    }));
+    flat[s.id]=arr;
+  });
+  _idx={flat,byId}; return _idx;
+}
+const subj=id=>state.subjects.find(s=>s.id===id);
+const lessonsOf=ids=>{const I=idx();return (ids||[]).map(id=>I.byId[id]).filter(Boolean);};
+const totalLessons=s=>(idx().flat[s.id]||[]).length;
+const progOf=s=>Math.min(state.prog[s.id]||0,totalLessons(s));
+/* نهايات الشباتر غير الفارغة (تراكمي) لحساب هدف الأسبوع */
+function chapEnds(s){let n=0;const out=[];s.chapters.forEach(c=>{if(c.lessons.length){n+=c.lessons.length;out.push(n);}});return out;}
+
+/* ---------- لقطة الحالة (للمحاكاة دون تعديل الحالة الفعلية) ---------- */
+function cloneS(S){
+  return {prog:Object.assign({},S.prog),wk:Object.assign({},S.wk),wkWeek:S.wkWeek,ptr:S.ptr,
+          log:S.log.map(x=>({date:x.date,ids:x.ids.slice()}))};
+}
+
+/* ---------- هدف الأسبوع ----------
+   عند بداية كل أسبوع (أو أول حساب فيه) نحدد لكل مادة نشطة نهاية هدف الأسبوع:
+   نهاية الشابتر رقم (الإيقاع) من الشباتر غير المكتملة. الشابتر المتأخر يكمل أولاً ثم يُحسب الإيقاع. */
+function ensureWeek(S,date){
+  const ws=weekStart(date);
+  if(S.wkWeek!==ws){S.wk={};S.wkWeek=ws;}
+  const I=idx();
+  state.subjects.forEach(s=>{
+    if(s.status==='paused'||S.wk[s.id]!==undefined) return;
+    const p=Math.min(S.prog[s.id]||0,(I.flat[s.id]||[]).length);
+    const ends=chapEnds(s).filter(e=>e>p);
+    S.wk[s.id]=ends.length?ends[Math.min(s.pace,ends.length)-1]:p;
+  });
+}
+
+/* ---------- المراجعة السريعة الدوّارة (إلى ما لا نهاية) ----------
+   pool: كل الدروس المنجزة مرتبة بمفتاح ثابت. المؤشر يحفظ مفتاح آخر درس روجع.
+   نأخذ q درساً بعد المؤشر، وعند نهاية القائمة نلتف إلى بدايتها دون تكرار (q ≤ حجم القائمة). */
+function quickBatch(pool,ptr,q){
+  const n=pool.length; if(!n||q<=0) return [];
+  q=Math.min(q,n);
+  let i=pool.findIndex(l=>l.key>ptr); if(i<0) i=0;
+  const out=[]; for(let k=0;k<q;k++) out.push(pool[(i+k)%n]);
+  return out;
+}
+function completedOf(S){
+  const I=idx(); let out=[];
+  state.subjects.forEach(s=>{
+    const fl=I.flat[s.id]||[];
+    out=out.concat(fl.slice(0,Math.min(S.prog[s.id]||0,fl.length)));
+  });
+  return out.sort((a,b)=>a.key-b.key);
+}
+
+/* ---------- بناء مهام اليوم ---------- */
+/* يوم دراسة: دروس جديدة + ماضٍ قريب + مراجعة سريعة */
+function buildWorkTask(S,date){
+  const c=state.settings,I=idx();
+  ensureWeek(S,date);
+  const rem=Math.max(1,5-dow(date));               // أيام الدراسة المتبقية في الأسبوع شاملاً اليوم
+  const newL=[];
+  state.subjects.forEach(s=>{
+    if(s.status==='paused') return;
+    const fl=I.flat[s.id]||[];
+    const p=Math.min(S.prog[s.id]||0,fl.length);
+    const tgt=Math.min(S.wk[s.id]===undefined?p:S.wk[s.id],fl.length);
+    const left=tgt-p; if(left<=0) return;
+    const q=Math.ceil(left/rem);                   // توزيع المتبقي على الأيام المتبقية، فلا تكديس ولا تكرار
+    fl.slice(p,p+q).forEach(l=>newL.push(l));      // فما فات من أيام يُدفع تلقائياً ويتوزع على ما بقي
+  });
+  const doneIds=S.log.flatMap(x=>x.ids).filter(id=>I.byId[id]);
+  const near=doneIds.slice(-c.near).map(id=>I.byId[id]);        // الماضي القريب: آخر N درس منجز
+  const nearSet=new Set(near.map(l=>l.id));
+  const pool=completedOf(S).filter(l=>!nearSet.has(l.id));      // البعيد = كل المنجز ما عدا القريب
+  /* موازنة اليوم: كلما زادت الدروس الجديدة خفّت المراجعة السريعة (بحد أدنى 2) */
+  const qq=Math.max(Math.min(2,c.quick),c.quick-Math.floor(newL.length/2));
+  const quota=Math.min(qq,pool.length);
+  return {kind:'work',date,newL,near,quick:quickBatch(pool,S.ptr,quota),poolSize:pool.length,qQuota:quota};
+}
+/* السبت: مراجعة أسبوعية شاملة + جزء من القديم بسقف محدد + تحضير الأحد فقط */
+function buildSatTask(S,date){
+  const c=state.settings,I=idx();
+  const lo=addDays(date,-6),hi=addDays(date,-1);
+  const weekIds=[...new Set(S.log.filter(x=>x.date>=lo&&x.date<=hi).flatMap(x=>x.ids))].filter(id=>I.byId[id]);
+  const week=weekIds.map(id=>I.byId[id]);
+  const weekSet=new Set(weekIds);
+  const pool=completedOf(S).filter(l=>!weekSet.has(l.id));       // القديم = ما عدا دروس هذا الأسبوع
+  const quota=Math.min(c.satCap,pool.length);
+  const sun=buildWorkTask(cloneS(S),addDays(date,1));            // معاينة الأحد دون تغيير الحالة
+  return {kind:'sat',date,week,quick:quickBatch(pool,S.ptr,quota),poolSize:pool.length,qQuota:quota,sunPrep:sun.newL};
+}
+function taskFor(S,date){
+  const k=kind(date);
+  if(k==='work') return buildWorkTask(S,date);
+  if(k==='sat') return buildSatTask(S,date);
+  return {kind:'fri',date};
+}
+/* تطبيق نتيجة اليوم على اللقطة: يتقدم التقدم والسجل والمؤشر */
+function advance(S,t){
+  if(t.kind==='work'){
+    const by={};
+    t.newL.forEach(l=>{by[l.subjId]=(by[l.subjId]||0)+1;});
+    Object.keys(by).forEach(id=>{S.prog[id]=(S.prog[id]||0)+by[id];});
+    if(t.newL.length) S.log.push({date:t.date,ids:t.newL.map(l=>l.id)});
+  }
+  if((t.kind==='work'||t.kind==='sat')&&t.quick.length) S.ptr=t.quick[t.quick.length-1].key;
+}
+
+/* ---------- الترحيل والإسقاط على المستقبل ---------- */
+/* أول يوم لم تُحسم مهامه: اليوم إن لم يؤكَّد، وإلا الغد (ولا يسبق تاريخ بداية الخطة) */
+function pendingStart(){
+  const t=todayStr();
+  const d=(state.days[t]&&state.days[t].done)?addDays(t,1):t;
+  return d<state.settings.startDate?state.settings.startDate:d;
+}
+function nextWorkDate(){let d=pendingStart();while(kind(d)!=='work') d=addDays(d,1);return d;}
+/* مهام اليوم الفعلية: التقدم لا يتغير إلا بالتأكيد، فأي يوم فائت يُدفع تلقائياً ويُعاد توزيعه على ما تبقى */
+function todayTask(){return taskFor(cloneS(state),todayStr());}
+/* إسقاط المهام من أول يوم معلّق حتى until (تتقدم الحالة يوماً بيوم) */
+function project(until){
+  const out={}; const S=cloneS(state); let d=pendingStart(); let g=0;
+  while(d<=until&&g++<800){const t=taskFor(S,d);out[d]=t;advance(S,t);d=addDays(d,1);}
+  return out;
+}
+function missedDays(){
+  const out=[],t=todayStr(); let d=state.settings.startDate,g=0;
+  while(d<t&&g++<1500){if(kind(d)==='work'&&!(state.days[d]&&state.days[d].done)) out.push(d);d=addDays(d,1);}
+  return out;
+}
+function dayInfo(date,proj){
+  const t0=todayStr(),k=kind(date),rec=state.days[date],isToday=date===t0; let status;
+  if(rec&&rec.done) status='done';
+  else if(date<state.settings.startDate) status='none';
+  else if(k==='fri') status='fri';
+  else if(k==='sat') status='sat';
+  else if(date<t0) status='late';
+  else if(isToday) status='today';
+  else status='future';
+  return {date,kind:k,status,isToday,rec,task:(proj&&proj[date])||null};
+}
+
+/* ---------- التحضير: الغد والأسبوع المقبل (تُحسب من الإسقاط) ----------
+   الغد = أول يوم دراسة بعد اليوم (الخميس ← الأحد). الأسبوع المقبل = دروس أحد–خميس القادم. */
+function prepData(){
+  const t=todayStr();
+  let td=addDays(t,1); while(kind(td)!=='work') td=addDays(td,1);
+  let ns=addDays(t,1); while(dow(ns)!==0) ns=addDays(ns,1);
+  const proj=project(addDays(ns,4));
+  const tomorrow=(proj[td]&&proj[td].newL)||[];
+  const m=new Map();
+  for(let i=0;i<5;i++){const x=proj[addDays(ns,i)]; if(x&&x.newL) x.newL.forEach(l=>m.set(l.id,l));}
+  return {tomorrowDate:td,tomorrow,nextSun:ns,nextWeek:[...m.values()]};
+}
+
+/* ---------- التأكيد والتراجع والتعويض ---------- */
+function confirmDay(date,opts){
+  opts=opts||{};
+  if(state.days[date]&&state.days[date].done) return false;
+  if(kind(date)==='fri') return false;
+  const S=cloneS(state); const t=taskFor(S,date);
+  const rec={done:true,kind:t.kind,makeup:!!opts.makeup,at:new Date().toISOString(),
+    prev:{prog:Object.assign({},state.prog),ptr:state.ptr,wk:Object.assign({},state.wk),wkWeek:state.wkWeek}};
+  if(t.kind==='work'){rec.ids=t.newL.map(l=>l.id);rec.near=t.near.map(l=>l.id);rec.quick=t.quick.map(l=>l.id);}
+  else{rec.week=t.week.map(l=>l.id);rec.quick=t.quick.map(l=>l.id);}
+  advance(S,t);
+  state.prog=S.prog;state.log=S.log;state.ptr=S.ptr;state.wk=S.wk;state.wkWeek=S.wkWeek;
+  state.days[date]=rec; save(); return true;
+}
+/* التعويض: يُنجَز عمل يوم إضافي الآن ويُسجَّل على أقدم يوم فائت */
+function makeupDay(){
+  const m=missedDays(); if(!m.length) return null;
+  return confirmDay(m[0],{makeup:true})?m[0]:null;
+}
+function undoLast(){
+  const ds=Object.keys(state.days).filter(d=>state.days[d]&&state.days[d].done);
+  if(!ds.length) return null;
+  ds.sort((a,b)=>state.days[a].at<state.days[b].at?-1:1);
+  const d=ds[ds.length-1],r=state.days[d];
+  if(r.prev){state.prog=r.prev.prog;state.ptr=r.prev.ptr;state.wk=r.prev.wk;state.wkWeek=r.prev.wkWeek;}
+  state.log=state.log.filter(x=>x.date!==d);
+  delete state.days[d]; save(); return d;
+}
+
+/* ---------- الإعدادات ---------- */
+function applySettings(inp){
+  const o=state.settings,n=Object.assign({},o);
+  n.near=clamp(parseInt(inp.near)||o.near,1,30);
+  n.quick=clamp(parseInt(inp.quick)||o.quick,1,40);
+  n.satCap=clamp(parseInt(inp.satCap)||o.satCap,1,80);
+  n.startDate=/^\d{4}-\d{2}-\d{2}$/.test(inp.startDate||'')?inp.startDate:o.startDate;
+  state.settings=n; save(); return n;
+}
+
+/* ---------- إدارة المواد والشباتر والدروس ---------- */
+/* أي تغيير في الهيكل يعيد حساب هدف الأسبوع من التقدم الحالي */
+function structChanged(){state.wk={};state.wkWeek='';save();}
+function parseLines(txt){
+  return String(txt||'').split(/\r?\n/)
+    .map(x=>x.trim().replace(/^[-*•]\s+/,'').replace(/^(\d+|[٠-٩]+)\s*[.\-)،:]\s*/,'').trim())
+    .filter(Boolean);
+}
+const newLesson=t=>({id:'l'+(++state.seq),title:t,prep:''});
+function addSubject(name,pace){
+  name=String(name||'').trim(); if(!name) return null;
+  const seq=++state.seq;
+  const s={id:'s'+seq,seq,name,pace:clamp(parseInt(pace)||1,1,4),status:'active',chapters:[]};
+  state.subjects.push(s); structChanged(); return s;
+}
+/* يضيف شابتر جديداً في آخر المادة بدروسه (سطر لكل درس)، ويرجع عدد الدروس أو -1 */
+function addChapter(sid,title,linesTxt){
+  const s=subj(sid); if(!s) return -1;
+  const lines=parseLines(linesTxt); title=String(title||'').trim();
+  if(!title&&!lines.length) return -1;
+  s.chapters.push({id:'c'+(++state.seq),title:title||('شابتر '+(s.chapters.length+1)),lessons:lines.map(newLesson)});
+  structChanged(); return lines.length;
+}
+/* يضيف دروساً إلى نهاية شابتر موجود، بشرط ألا يكون قبل نقطة التقدم الحالية */
+function addLessons(sid,cid,linesTxt){
+  const s=subj(sid); if(!s) return -1;
+  const lines=parseLines(linesTxt); if(!lines.length) return -1;
+  let end=0,target=null;
+  for(const c of s.chapters){end+=c.lessons.length; if(c.id===cid){target=c;break;}}
+  if(!target||end<(state.prog[sid]||0)) return -1;
+  target.lessons.push(...lines.map(newLesson));
+  structChanged(); return lines.length;
+}
+function findLesson(s,lid){
+  let i=0;
+  for(const c of s.chapters){
+    for(let k=0;k<c.lessons.length;k++){if(c.lessons[k].id===lid) return {c,k,i:i+k};}
+    i+=c.lessons.length;
+  }
+  return null;
+}
+function deleteLesson(sid,lid){
+  const s=subj(sid); if(!s) return false;
+  const f=findLesson(s,lid); if(!f) return false;
+  f.c.lessons.splice(f.k,1);
+  if(f.i<(state.prog[sid]||0)) state.prog[sid]-=1;
+  structChanged(); return true;
+}
+function deleteChapter(sid,cid){
+  const s=subj(sid); if(!s) return false;
+  let start=0;
+  for(const c of s.chapters){
+    if(c.id===cid){
+      const p=state.prog[sid]||0, dn=clamp(p-start,0,c.lessons.length);
+      state.prog[sid]=p-dn;
+      s.chapters=s.chapters.filter(x=>x.id!==cid);
+      structChanged(); return true;
+    }
+    start+=c.lessons.length;
+  }
+  return false;
+}
+function deleteSubject(sid){
+  state.subjects=state.subjects.filter(s=>s.id!==sid);
+  delete state.prog[sid]; delete state.wk[sid]; structChanged();
+}
+function setPace(sid,n){const s=subj(sid); if(!s) return; s.pace=clamp(parseInt(n)||1,1,4); structChanged();}
+function setStatus(sid,st){const s=subj(sid); if(!s) return; s.status=st==='paused'?'paused':'active'; structChanged();}
+function renameSubject(sid,name){const s=subj(sid); name=String(name||'').trim(); if(!s||!name) return; s.name=name; save();}
+function setPrep(lid,text){
+  for(const s of state.subjects){const f=findLesson(s,lid); if(f){f.c.lessons[f.k].prep=String(text||'').trim(); save(); return true;}}
+  return false;
+}
+
+/* ---------- اختبار ذاتي (من Console المتصفح: studySelfTest()) ---------- */
+window.studySelfTest=function(){
+  const r=[]; const eq=(n,a,b)=>{const ok=JSON.stringify(a)===JSON.stringify(b);r.push((ok?'✅ ':'❌ ')+n+(ok?'':' → '+JSON.stringify(a)));};
+  const backup=state;
+  try{
+    eq('التفاف المؤشر',quickBatch([{key:1},{key:2},{key:3},{key:4},{key:5}],4,3).map(x=>x.key),[5,1,2]);
+    eq('بلا تكرار',quickBatch([{key:1},{key:2}],1,10).map(x=>x.key),[2,1]);
+    eq('الأحد أول أيام الأسبوع',dow('2026-11-22'),0);
+    eq('الجمعة خفيف',kind('2026-11-27'),'fri');
+    eq('السبت مراجعة',kind('2026-11-28'),'sat');
+    /* شابتر من 7 دروس يتوزع على 5 أيام بلا تكديس: 2،2،1،1،1 */
+    state=normalizeState({settings:{startDate:'2026-11-22'},seq:50,subjects:[{id:'s1',seq:1,name:'اختبار',pace:1,
+      chapters:[{id:'c1',title:'أ',lessons:[1,2,3,4,5,6,7].map(i=>({id:'t'+i,title:'د'+i}))}]}]});
+    _idx=null;
+    const S=cloneS(state),counts=[];
+    for(let i=0;i<5;i++){const d=addDays('2026-11-22',i);const t=taskFor(S,d);counts.push(t.newL.length);advance(S,t);}
+    eq('توزيع الشابتر على الأسبوع',counts,[2,2,1,1,1]);
+    eq('اكتمال الشابتر',S.prog.s1,7);
+    const sat=taskFor(S,'2026-11-28');
+    eq('السبت يراجع دروس الأسبوع',sat.week.length,7);
+  }finally{state=backup;_idx=null;}
+  console.log(r.join('\n')); return r;
+};
