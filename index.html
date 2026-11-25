@@ -532,7 +532,7 @@ function nearReviewLessons(S,date){
   });
   Object.keys(S.srs||{}).forEach(lid=>{
     const r=S.srs[lid];
-    if(r&&r.lastReviewed&&win.has(r.lastReviewed)&&r.lastRating==='hard'&&I.byId[lid]&&!ids.includes(lid)){
+    if(r&&r.lastReviewed&&win.has(r.lastReviewed)&&I.byId[lid]&&!ids.includes(lid)){
       ids.push(lid);
     }
   });
