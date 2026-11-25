@@ -466,19 +466,34 @@ function resetAll(){state=defaultState();save();}
 function defaultFbCfg(){
   return {
     mode:'firestore',
-    apiKey:'',
-    projectId:'',
-    dbUrl:'',
-    docId:'study_tracker_v2_main',
-    autoSync:true,
-    lastSyncAt:''
+    apiKey: "AIzaSyC0vAQ638StPnJOAk-fKGu1TXoE4RCY9Oc",
+    authDomain: "projects-338af.firebaseapp.com",
+    projectId: "projects-338af",
+    storageBucket: "projects-338af.firebasestorage.app",
+    messagingSenderId: "322033143003",
+    appId: "1:322033143003:web:fb0b864eaab1c69698d0fe",
+    measurementId: "G-R6E7H2WTN6",
+    docId: "study_tracker_v2_main",
+    autoSync: true,
+    lastSyncAt: ""
   };
 }
 function loadFbCfg(){
+  const def=defaultFbCfg();
   try{
     const raw=localStorage.getItem(FB_CFG_KEY);
-    return Object.assign(defaultFbCfg(), raw?JSON.parse(raw):{});
-  }catch(e){return defaultFbCfg();}
+    if(!raw) return def;
+    const saved=JSON.parse(raw)||{};
+    return Object.assign({}, def, {
+      mode: saved.mode || def.mode,
+      apiKey: saved.apiKey || def.apiKey,
+      projectId: saved.projectId || def.projectId,
+      dbUrl: saved.dbUrl || '',
+      docId: saved.docId || def.docId,
+      autoSync: saved.autoSync !== undefined ? saved.autoSync : def.autoSync,
+      lastSyncAt: saved.lastSyncAt || ''
+    });
+  }catch(e){return def;}
 }
 let fbCfg=loadFbCfg();
 let syncStatusText='💾 محلي فقط';
