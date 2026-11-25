@@ -571,7 +571,7 @@ async function doPush(noRetry){
   const payload=JSON.stringify(state);
   setStatus('syncing');
   try{
-    const ref=db.collection('users').doc(u.uid);
+    const ref=db.collection('study_users').doc(u.uid);
     const res=await db.runTransaction(async tx=>{
       const snap=await tx.get(ref);
       if(snap.exists&&(Number(snap.data().updatedAt)||0)>ts) return 'newer';
@@ -595,7 +595,7 @@ function schedulePush(){
   clearTimeout(timer); timer=setTimeout(pushNow,1500);
 }
 async function reconcile(fromPush){
-  const u=user; const ref=db.collection('users').doc(u.uid);
+  const u=user; const ref=db.collection('study_users').doc(u.uid);
   const snap=await ref.get();
   if(user!==u) return;
   const cloudTs=snap.exists?(Number(snap.data().updatedAt)||0):0;
@@ -695,7 +695,7 @@ async function doDelete(){
   lock(true); msg('');
   try{
     try{await inflight;}catch(e){}
-    await db.collection('users').doc(u.uid).delete();
+    await db.collection('study_users').doc(u.uid).delete();
     try{await u.delete();}
     catch(e){
       if(e.code==='auth/requires-recent-login'){openReauth(u);return;}
