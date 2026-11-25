@@ -19,7 +19,8 @@ html,body{margin:0;padding:0}
 body{background:var(--bg);color:var(--ink);font-family:"Noto Naskh Arabic","Geeza Pro","Segoe UI",Tahoma,sans-serif;font-size:17px;line-height:1.7}
 header{background:var(--brand-d);color:#fff;padding:18px 16px 0;text-align:center}
 header h1{margin:0 0 4px;font-size:1.5rem}
-header .sub{opacity:.85;font-size:.9rem;margin-bottom:12px}
+header .sub{opacity:.85;font-size:.9rem;margin-bottom:8px}
+.sync-pill{display:inline-flex;align-items:center;gap:6px;background:rgba(255,255,255,.14);border:1px solid rgba(255,255,255,.22);padding:3px 12px;border-radius:999px;font-size:.82rem;margin-bottom:10px}
 nav{display:flex;gap:6px;justify-content:center;flex-wrap:wrap}
 nav button{background:transparent;border:0;color:#cfd9f3;font:inherit;padding:10px 16px;cursor:pointer;border-radius:10px 10px 0 0}
 nav button.active{background:var(--bg);color:var(--brand-d);font-weight:700}
@@ -126,6 +127,7 @@ details.subj-card[open] .subj-head .chev{transform:rotate(-90deg)}
 <header>
   <h1>📚 متتبع المذاكرة والمراجعة</h1>
   <div class="sub" id="todayHeader"></div>
+  <div class="sync-pill" id="syncStatusPill">💾 محلي فقط</div>
   <nav id="tabs">
     <button data-view="today" class="active">اليوم</button>
     <button data-view="subjects">المواد</button>
@@ -220,6 +222,47 @@ details.subj-card[open] .subj-head .chev{transform:rotate(-90deg)}
   <!-- الإعدادات -->
   <section id="view-settings" class="view">
     <div class="card">
+      <h3>☁️ مزامنة Firebase (حماية البيانات من الضياع)</h3>
+      <p class="small">النظام يحفظ محلياً أولاً في <b>localStorage</b> ولا يمسح بياناتكِ أبداً عند فشل الاتصال؛ وعند ضبط إعدادات Firebase يزامن التحديثات تلقائياً.</p>
+      <label>نوع قاعدة البيانات في Firebase</label>
+      <select id="fbMode">
+        <option value="firestore">Cloud Firestore (REST)</option>
+        <option value="rtdb">Realtime Database (REST)</option>
+      </select>
+      <div class="grid2">
+        <div>
+          <label>API Key</label>
+          <input id="fbApiKey" type="text" placeholder="AIzaSy...">
+        </div>
+        <div>
+          <label>Project ID</label>
+          <input id="fbProjectId" type="text" placeholder="my-study-project">
+        </div>
+      </div>
+      <div class="grid2">
+        <div>
+          <label>Database URL (مطلوب لـ Realtime Database)</label>
+          <input id="fbDbUrl" type="text" placeholder="https://xxx-default-rtdb.firebaseio.com">
+        </div>
+        <div>
+          <label>معرّف المسار / المستند (Document / Path ID)</label>
+          <input id="fbDocId" type="text" placeholder="aram_study_v2">
+        </div>
+      </div>
+      <label>
+        <input id="fbAutoSync" type="checkbox" style="width:auto;margin-left:6px">
+        مزامنة تلقائية عند فتح الصفحة وبعد كل تعديل
+      </label>
+      <div class="actions">
+        <button id="saveFbBtn" class="btn">حفظ إعدادات Firebase</button>
+        <button id="syncNowBtn" class="btn ok" type="button">🔄 مزامنة الآن</button>
+        <button id="pullCloudBtn" class="btn alt" type="button">⬇️ سحب من السحابة (ودمج)</button>
+        <button id="pushCloudBtn" class="btn alt" type="button">⬆️ رفع للسحابة</button>
+      </div>
+      <p class="small" id="fbLastSyncInfo">آخر مزامنة: لم تتم بعد</p>
+    </div>
+
+    <div class="card">
       <h3>إعدادات الخطة والتكرار المتباعد</h3>
       <label>تاريخ بداية الخطة</label>
       <input id="setStartDate" type="date">
@@ -273,6 +316,7 @@ details.subj-card[open] .subj-head .chev{transform:rotate(-90deg)}
 <script>
 'use strict';
 const KEY='studyTrackerV2';
+const FB_CFG_KEY='studyTrackerFirebaseCfgV1';
 const DAYS_AR=['الأحد','الاثنين','الثلاثاء','الأربعاء','الخميس','الجمعة','السبت'];
 const MONTHS_AR=['يناير','فبراير','مارس','أبريل','مايو','يونيو','يوليو','أغسطس','سبتمبر','أكتوبر','نوفمبر','ديسمبر'];
 const RATING_LABEL={hard:'صعب (مراجعة قريبة)',good:'جيد',easy:'سهل (متباعد)'};
@@ -414,8 +458,221 @@ function save(opts){
   _idx=null;
   try{localStorage.setItem(KEY,JSON.stringify(state));}
   catch(e){toast('تعذّر الحفظ في المتصفح');}
+  if(!opts.noCloud && typeof scheduleCloudSync==='function') scheduleCloudSync();
 }
 function resetAll(){state=defaultState();save();}
+
+/* FIREBASE_SYNC_MODULE */
+function defaultFbCfg(){
+  return {
+    mode:'firestore',
+    apiKey:'',
+    projectId:'',
+    dbUrl:'',
+    docId:'study_tracker_v2_main',
+    autoSync:true,
+    lastSyncAt:''
+  };
+}
+function loadFbCfg(){
+  try{
+    const raw=localStorage.getItem(FB_CFG_KEY);
+    return Object.assign(defaultFbCfg(), raw?JSON.parse(raw):{});
+  }catch(e){return defaultFbCfg();}
+}
+let fbCfg=loadFbCfg();
+let syncStatusText='💾 محلي فقط';
+let _syncTimer=null;
+let _syncing=false;
+
+function saveFbCfg(next){
+  fbCfg=Object.assign(defaultFbCfg(),fbCfg,next||{});
+  fbCfg.apiKey=String(fbCfg.apiKey||'').trim();
+  fbCfg.projectId=String(fbCfg.projectId||'').trim();
+  fbCfg.dbUrl=String(fbCfg.dbUrl||'').trim().replace(/\/+$/,'');
+  fbCfg.docId=String(fbCfg.docId||'study_tracker_v2_main').trim().replace(/[^a-zA-Z0-9_-]/g,'_')||'study_tracker_v2_main';
+  fbCfg.autoSync=!!fbCfg.autoSync;
+  localStorage.setItem(FB_CFG_KEY,JSON.stringify(fbCfg));
+  renderSyncUI();
+}
+
+function isFbConfigured(){
+  if(fbCfg.mode==='rtdb') return !!fbCfg.dbUrl;
+  return !!(fbCfg.apiKey && fbCfg.projectId);
+}
+
+function setSyncStatus(txt){
+  syncStatusText=txt;
+  renderSyncUI();
+}
+
+function renderSyncUI(){
+  const pill=$('#syncStatusPill');
+  if(pill){
+    pill.textContent=isFbConfigured()?syncStatusText:'💾 محلي فقط (Firebase غير مضبوط)';
+  }
+  const info=$('#fbLastSyncInfo');
+  if(info){
+    info.textContent=fbCfg.lastSyncAt
+      ? ('آخر مزامنة ناجحة: '+fbCfg.lastSyncAt)
+      : 'آخر مزامنة: لم تتم بعد';
+  }
+}
+
+function mergeStatesSafely(localSt,remoteSt){
+  const a=normalizeState(localSt);
+  const b=normalizeState(remoteSt);
+  const base=(a.updatedAt>=b.updatedAt)?a:b;
+  const other=(a.updatedAt>=b.updatedAt)?b:a;
+
+  // دمج المواد دون فقدان أي مادة موجودة في أحدهما إذا لم تُحذف بأحدث طابع
+  const subjMap=new Map();
+  other.subjects.forEach(s=>subjMap.set(s.id,s));
+  base.subjects.forEach(s=>subjMap.set(s.id,s));
+  const mergedSubjects=[...subjMap.values()].sort((x,y)=>(x.seq||0)-(y.seq||0));
+
+  const mergedProg={};
+  new Set([...Object.keys(other.prog||{}),...Object.keys(base.prog||{})]).forEach(k=>{
+    mergedProg[k]=Math.max(other.prog[k]||0,base.prog[k]||0);
+  });
+
+  const mergedSrs=Object.assign({},other.srs||{},base.srs||{});
+  Object.keys(other.srs||{}).forEach(k=>{
+    const oItem=other.srs[k], bItem=base.srs[k];
+    if(!bItem) mergedSrs[k]=oItem;
+    else if(oItem && (oItem.lastReviewed||'') > (bItem.lastReviewed||'')) mergedSrs[k]=oItem;
+  });
+
+  const logKey=x=>x.date+'|'+x.ids.join(',');
+  const logMap=new Map();
+  (other.log||[]).forEach(x=>logMap.set(logKey(x),x));
+  (base.log||[]).forEach(x=>logMap.set(logKey(x),x));
+  const mergedLog=[...logMap.values()].sort((x,y)=>x.date<y.date?-1:1);
+
+  return normalizeState({
+    v:2,
+    updatedAt:Math.max(a.updatedAt||0,b.updatedAt||0),
+    settings:base.settings,
+    seq:Math.max(a.seq||0,b.seq||0,mergedSubjects.length*10),
+    subjects:mergedSubjects,
+    prog:mergedProg,
+    wk:base.wk,
+    wkWeek:base.wkWeek,
+    ptr:Math.max(a.ptr||0,b.ptr||0),
+    days:Object.assign({},other.days||{},base.days||{}),
+    srs:mergedSrs,
+    history:base.history.length>=other.history.length?base.history:other.history
+  });
+}
+
+async function fbPullState(){
+  if(!isFbConfigured()) throw new Error('أدخلي إعدادات Firebase أولاً');
+  if(fbCfg.mode==='rtdb'){
+    const q=fbCfg.apiKey?('?auth='+encodeURIComponent(fbCfg.apiKey)):'';
+    const url=fbCfg.dbUrl+'/study_tracker/'+encodeURIComponent(fbCfg.docId)+'.json'+q;
+    const res=await fetch(url);
+    if(!res.ok) throw new Error('فشل القراءة من Realtime DB ('+res.status+')');
+    const data=await res.json();
+    if(!data || typeof data!=='object') return null;
+    return data.payload || data;
+  }else{
+    const url='https://firestore.googleapis.com/v1/projects/'+encodeURIComponent(fbCfg.projectId)+
+      '/databases/(default)/documents/study_tracker/'+encodeURIComponent(fbCfg.docId)+
+      '?key='+encodeURIComponent(fbCfg.apiKey);
+    const res=await fetch(url);
+    if(res.status===404) return null;
+    if(!res.ok) throw new Error('فشل القراءة من Firestore ('+res.status+')');
+    const doc=await res.json();
+    const rawJson=doc && doc.fields && doc.fields.payload && doc.fields.payload.stringValue;
+    if(!rawJson) return null;
+    return JSON.parse(rawJson);
+  }
+}
+
+async function fbPushState(targetState){
+  if(!isFbConfigured()) throw new Error('أدخلي إعدادات Firebase أولاً');
+  const payload=normalizeState(targetState);
+  if(fbCfg.mode==='rtdb'){
+    const q=fbCfg.apiKey?('?auth='+encodeURIComponent(fbCfg.apiKey)):'';
+    const url=fbCfg.dbUrl+'/study_tracker/'+encodeURIComponent(fbCfg.docId)+'.json'+q;
+    const res=await fetch(url,{
+      method:'PUT',
+      headers:{'Content-Type':'application/json'},
+      body:JSON.stringify({updatedAt:payload.updatedAt,payload})
+    });
+    if(!res.ok) throw new Error('فشل الرفع إلى Realtime DB ('+res.status+')');
+  }else{
+    const url='https://firestore.googleapis.com/v1/projects/'+encodeURIComponent(fbCfg.projectId)+
+      '/databases/(default)/documents/study_tracker/'+encodeURIComponent(fbCfg.docId)+
+      '?key='+encodeURIComponent(fbCfg.apiKey);
+    const body={
+      fields:{
+        updatedAt:{integerValue:String(payload.updatedAt||Date.now())},
+        payload:{stringValue:JSON.stringify(payload)}
+      }
+    };
+    const res=await fetch(url,{
+      method:'PATCH',
+      headers:{'Content-Type':'application/json'},
+      body:JSON.stringify(body)
+    });
+    if(!res.ok) throw new Error('فشل الرفع إلى Firestore ('+res.status+')');
+  }
+}
+
+async function syncNow(opts){
+  opts=opts||{};
+  if(!isFbConfigured()){
+    setSyncStatus('💾 محلي فقط');
+    if(!opts.silent) toast('أدخلي بيانات Firebase في الإعدادات أولاً');
+    return;
+  }
+  if(_syncing) return;
+  _syncing=true;
+  setSyncStatus('🔄 جارٍ المزامنة...');
+  try{
+    const remote=await fbPullState();
+    let finalState=state;
+    if(opts.forcePush){
+      await fbPushState(state);
+    }else if(opts.forcePull && remote){
+      finalState=mergeStatesSafely(state,remote);
+      state=finalState;
+      save({keepStamp:true,noCloud:true});
+    }else if(remote){
+      const remNorm=normalizeState(remote);
+      if((remNorm.updatedAt||0) > (state.updatedAt||0)){
+        finalState=mergeStatesSafely(state,remNorm);
+        state=finalState;
+        save({keepStamp:true,noCloud:true});
+      }else if((state.updatedAt||0) > (remNorm.updatedAt||0)){
+        await fbPushState(state);
+      }else{
+        finalState=mergeStatesSafely(state,remNorm);
+        state=finalState;
+        save({keepStamp:true,noCloud:true});
+      }
+    }else{
+      await fbPushState(state);
+    }
+    fbCfg.lastSyncAt=new Date().toLocaleString('ar-SA');
+    saveFbCfg({lastSyncAt:fbCfg.lastSyncAt});
+    setSyncStatus('☁️ متزامن');
+    if(typeof renderAll==='function') renderAll();
+    if(!opts.silent) toast('تمت المزامنة مع Firebase ✅');
+  }catch(e){
+    setSyncStatus('⚠️ تعذّرت المزامنة (محلي محفوظ)');
+    if(!opts.silent) toast(e.message||'تعذّرت المزامنة، بياناتكِ محفوظة محلياً');
+  }finally{
+    _syncing=false;
+  }
+}
+
+function scheduleCloudSync(){
+  if(!isFbConfigured() || !fbCfg.autoSync) return;
+  clearTimeout(_syncTimer);
+  _syncTimer=setTimeout(()=>syncNow({silent:true}),1200);
+}
 
 function idx(){
   if(_idx) return _idx;
@@ -1138,6 +1395,14 @@ function renderSettings(){
   $('#setGoodDays').value=s.goodDays;
   $('#setEasyDays').value=s.easyDays;
   $('#setBaseEase').value=s.baseEase;
+
+  $('#fbMode').value=fbCfg.mode||'firestore';
+  $('#fbApiKey').value=fbCfg.apiKey||'';
+  $('#fbProjectId').value=fbCfg.projectId||'';
+  $('#fbDbUrl').value=fbCfg.dbUrl||'';
+  $('#fbDocId').value=fbCfg.docId||'study_tracker_v2_main';
+  $('#fbAutoSync').checked=!!fbCfg.autoSync;
+  renderSyncUI();
 }
 
 function exportJSON(){
@@ -1164,6 +1429,7 @@ function importJSON(file){
 function renderAll(){
   renderToday();
   renderSubjects();
+  renderSyncUI();
   if(typeof refreshImportTargets==='function') refreshImportTargets();
   if(typeof renderCalendar==='function') renderCalendar();
   if(typeof renderSettings==='function') renderSettings();
@@ -1283,6 +1549,23 @@ function bindRest(){
     const c=e.target.closest('.cal-cell[data-date]'); if(!c) return;
     selDate=c.dataset.date; renderCalendar();
   });
+
+  $('#saveFbBtn').addEventListener('click',()=>{
+    saveFbCfg({
+      mode:$('#fbMode').value,
+      apiKey:$('#fbApiKey').value,
+      projectId:$('#fbProjectId').value,
+      dbUrl:$('#fbDbUrl').value,
+      docId:$('#fbDocId').value,
+      autoSync:$('#fbAutoSync').checked
+    });
+    toast('تم حفظ إعدادات Firebase ✅');
+    if(isFbConfigured() && fbCfg.autoSync) syncNow({silent:true});
+  });
+  $('#syncNowBtn').addEventListener('click',()=>syncNow());
+  $('#pullCloudBtn').addEventListener('click',()=>syncNow({forcePull:true}));
+  $('#pushCloudBtn').addEventListener('click',()=>syncNow({forcePush:true}));
+
   $('#saveSettings').addEventListener('click',()=>{
     applySettings({
       startDate:$('#setStartDate').value,
@@ -1511,9 +1794,9 @@ function renderImpPreview(P,err){
   }
   const nL=P.chapters.reduce((a,c)=>a+c.lessons.length,0);
   const tv=$('#impTarget').value,s=tv==='new'?null:subj(tv);
+  const nm=($('#impName').value||P.name||'').trim();
   let where;
   if(!s){
-    const nm=($('#impName').value||P.name||'').trim();
     const mVal=$('#impMonths').value!==''?clamp(parseInt($('#impMonths').value)||0,0,24):(P.studyMonths!==null&&P.studyMonths!==undefined?P.studyMonths:3);
     where='سيتم إنشاء <b>مادة جديدة</b>'+(nm?' باسم «'+esc(nm)+'»':' (اكتبي اسمها في الحقل أعلاه)')+' • <b>'+monthsLabel(mVal)+'</b>.';
   }else{
@@ -1592,6 +1875,7 @@ function init(){
   bindImport();
   bindRest();
   renderAll();
+  if(isFbConfigured() && fbCfg.autoSync) syncNow({silent:true});
   let last=todayStr();
   setInterval(()=>{const n=todayStr();if(n!==last){last=n;calCursor=n;selDate=n;renderAll();}},60000);
 }
