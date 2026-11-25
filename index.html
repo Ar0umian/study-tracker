@@ -122,6 +122,37 @@ details.subj-card[open] .subj-head .chev{transform:rotate(-90deg)}
 #impText{min-height:150px}
 .imp-sample{display:flex;gap:8px;flex-wrap:wrap;margin-top:6px}
 </style>
+
+<!-- أنماط نافذة الحساب -->
+<style>
+.modal-bg{position:fixed;top:0;right:0;bottom:0;left:0;background:rgba(20,30,35,.55);display:flex;align-items:center;justify-content:center;padding:16px;z-index:20}
+.modal{background:#fff;border-radius:var(--radius);padding:20px;max-width:420px;width:100%;box-shadow:0 10px 40px rgba(0,0,0,.25)}
+.modal h3{margin:0 0 8px;color:var(--brand-d)}
+.modal.danger h3{color:var(--red)}
+.btn.danger{background:var(--red);color:#fff}
+.btn.danger:hover{background:#8f352d}
+.btn.google{background:#fff;color:var(--ink);border:1px solid var(--line)}
+.btn.google:hover{background:#f3f5fa}
+.acc-row{display:flex;align-items:center;justify-content:space-between;gap:10px;flex-wrap:wrap}
+.acc-user{font-weight:700;word-break:break-all}
+.acc-msg{min-height:1.4em;color:var(--red);font-size:.85rem;margin:6px 0 0}
+</style>
+
+<script src="https://www.gstatic.com/firebasejs/10.14.1/firebase-app-compat.js"></script>
+<script src="https://www.gstatic.com/firebasejs/10.14.1/firebase-auth-compat.js"></script>
+<script src="https://www.gstatic.com/firebasejs/10.14.1/firebase-firestore-compat.js"></script>
+<script>
+window.FIREBASE_CONFIG = {
+  apiKey: "AIzaSyC0vAQ638StPnJOAk-fKGu1TXoE4RCY9Oc",
+  authDomain: "projects-338af.firebaseapp.com",
+  projectId: "projects-338af",
+  storageBucket: "projects-338af.firebasestorage.app",
+  messagingSenderId: "322033143003",
+  appId: "1:322033143003:web:fb0b864eaab1c69698d0fe",
+  measurementId: "G-R6E7H2WTN6"
+};
+</script>
+
 </head>
 <body>
 <header>
@@ -221,46 +252,6 @@ details.subj-card[open] .subj-head .chev{transform:rotate(-90deg)}
 
   <!-- الإعدادات -->
   <section id="view-settings" class="view">
-    <div class="card">
-      <h3>☁️ مزامنة Firebase (حماية البيانات من الضياع)</h3>
-      <p class="small">النظام يحفظ محلياً أولاً في <b>localStorage</b> ولا يمسح بياناتكِ أبداً عند فشل الاتصال؛ وعند ضبط إعدادات Firebase يزامن التحديثات تلقائياً.</p>
-      <label>نوع قاعدة البيانات في Firebase</label>
-      <select id="fbMode">
-        <option value="firestore">Cloud Firestore (REST)</option>
-        <option value="rtdb">Realtime Database (REST)</option>
-      </select>
-      <div class="grid2">
-        <div>
-          <label>API Key</label>
-          <input id="fbApiKey" type="text" placeholder="AIzaSy...">
-        </div>
-        <div>
-          <label>Project ID</label>
-          <input id="fbProjectId" type="text" placeholder="my-study-project">
-        </div>
-      </div>
-      <div class="grid2">
-        <div>
-          <label>Database URL (مطلوب لـ Realtime Database)</label>
-          <input id="fbDbUrl" type="text" placeholder="https://xxx-default-rtdb.firebaseio.com">
-        </div>
-        <div>
-          <label>معرّف المسار / المستند (Document / Path ID)</label>
-          <input id="fbDocId" type="text" placeholder="aram_study_v2">
-        </div>
-      </div>
-      <label>
-        <input id="fbAutoSync" type="checkbox" style="width:auto;margin-left:6px">
-        مزامنة تلقائية عند فتح الصفحة وبعد كل تعديل
-      </label>
-      <div class="actions">
-        <button id="saveFbBtn" class="btn">حفظ إعدادات Firebase</button>
-        <button id="syncNowBtn" class="btn ok" type="button">🔄 مزامنة الآن</button>
-        <button id="pullCloudBtn" class="btn alt" type="button">⬇️ سحب من السحابة (ودمج)</button>
-        <button id="pushCloudBtn" class="btn alt" type="button">⬆️ رفع للسحابة</button>
-      </div>
-      <p class="small" id="fbLastSyncInfo">آخر مزامنة: لم تتم بعد</p>
-    </div>
 
     <div class="card">
       <h3>إعدادات الخطة والتكرار المتباعد</h3>
@@ -454,7 +445,7 @@ let _idx=null;
 
 function save(opts){
   opts=opts||{};
-  if(!opts.keepStamp) state.updatedAt=Date.now();
+  if(!opts.keepStamp && window.CloudSync) window.CloudSync.schedulePush();
   _idx=null;
   try{localStorage.setItem(KEY,JSON.stringify(state));}
   catch(e){toast('تعذّر الحفظ في المتصفح');}
@@ -462,78 +453,293 @@ function save(opts){
 }
 function resetAll(){state=defaultState();save();}
 
-/* FIREBASE_SYNC_MODULE */
-function defaultFbCfg(){
-  return {
-    mode:'firestore',
-    apiKey: "AIzaSyC0vAQ638StPnJOAk-fKGu1TXoE4RCY9Oc",
-    authDomain: "projects-338af.firebaseapp.com",
-    projectId: "projects-338af",
-    storageBucket: "projects-338af.firebasestorage.app",
-    messagingSenderId: "322033143003",
-    appId: "1:322033143003:web:fb0b864eaab1c69698d0fe",
-    measurementId: "G-R6E7H2WTN6",
-    docId: "study_tracker_v2_main",
-    autoSync: true,
-    lastSyncAt: ""
+/* FIREBASE_SYNC_MODULE: الحساب والمزامنة السحابية */
+(function(){
+'use strict';
+const OWNER_KEY='studyTrackerOwnerV2', SYNC_KEY='studyTrackerLastSyncV2';
+const cfg=window.FIREBASE_CONFIG||{};
+let configured=(typeof firebase!=='undefined')&&!!cfg.apiKey&&!!cfg.appId;
+let auth=null,db=null,user=null,ready=false;
+let timer=null,inflight=null,deleting=false,busy=false,status='idle',errMsg='';
+
+const lsGet=k=>{try{return localStorage.getItem(k);}catch(e){return null;}};
+const lsSet=(k,v)=>{try{localStorage.setItem(k,v);}catch(e){}};
+const lsDel=k=>{try{localStorage.removeItem(k);}catch(e){}};
+
+function errAr(e){
+  const m={
+    'auth/invalid-email':'البريد الإلكتروني غير صالح',
+    'auth/missing-password':'أدخلي كلمة المرور',
+    'auth/weak-password':'كلمة المرور ضعيفة (6 أحرف على الأقل)',
+    'auth/email-already-in-use':'هذا البريد مسجّل مسبقاً، جرّبي الدخول',
+    'auth/invalid-credential':'البريد أو كلمة المرور غير صحيحة',
+    'auth/wrong-password':'البريد أو كلمة المرور غير صحيحة',
+    'auth/user-not-found':'البريد أو كلمة المرور غير صحيحة',
+    'auth/too-many-requests':'محاولات كثيرة، حاولي لاحقاً',
+    'auth/network-request-failed':'تعذّر الاتصال بالإنترنت',
+    'auth/unauthorized-domain':'النطاق غير مضاف في Authorized domains',
+    'auth/operation-not-allowed':'طريقة الدخول غير مفعّلة في Firebase',
+    'auth/popup-closed-by-user':'أُغلقت نافذة الدخول',
+    'auth/cancelled-popup-request':'أُغلقت نافذة الدخول',
+    'auth/popup-blocked':'المتصفح منع النافذة المنبثقة، اسمحي بها وأعيدي المحاولة',
+    'permission-denied':'قواعد الأمان رفضت العملية، تأكدي من نشر Rules',
+    'unavailable':'تعذّر الاتصال بالسحابة، تحققي من الإنترنت'
+  };
+  return (e&&m[e.code])||('حدث خطأ: '+((e&&(e.code||e.message))||'غير معروف'));
+}
+
+let modalEl=null;
+function closeModal(){if(modalEl){modalEl.remove();modalEl=null;}}
+function openModal(inner,danger){
+  closeModal();
+  modalEl=document.createElement('div'); modalEl.className='modal-bg';
+  modalEl.innerHTML='<div class="modal'+(danger?' danger':'')+'">'+inner+'</div>';
+  document.body.appendChild(modalEl);
+  return modalEl;
+}
+const q=s=>modalEl?modalEl.querySelector(s):null;
+function msg(t,ok){const x=q('#accMsg'); if(x){x.textContent=t||''; x.style.color=ok?'#1f8a82':'';}}
+function lock(on){if(modalEl) modalEl.querySelectorAll('button').forEach(b=>b.disabled=on);}
+async function run(fn){msg(''); lock(true); try{await fn();}catch(e){msg(errAr(e));} lock(false);}
+
+function setStatus(s,m){status=s; errMsg=m||''; renderAccount();}
+function lastSyncText(){
+  const t=Number(lsGet(SYNC_KEY));
+  return t?new Date(t).toLocaleString('ar-SA-u-ca-gregory',{dateStyle:'medium',timeStyle:'short'}):'لم تتم بعد';
+}
+function statusText(){
+  if(deleting) return '🗑️ جارٍ حذف الحساب...';
+  if(status==='syncing') return '🔄 جارٍ المزامنة...';
+  if(status==='pending') return '⏳ تغييرات بانتظار الرفع';
+  if(status==='error') return '⚠️ '+errMsg;
+  return '✅ البيانات محدّثة';
+}
+function renderAccount(){
+  const box=document.getElementById('accountCard'); if(!box) return;
+  let h='<h3>☁️ الحساب والمزامنة</h3>';
+  if(!configured){
+    h+='<p class="small">المزامنة غير مفعّلة بعد: لم يتم ضبط firebaseConfig. التطبيق يعمل محلياً بشكل طبيعي.</p>';
+  }else if(!ready){
+    h+='<p class="small">جارٍ التحقق من الحساب...</p>';
+  }else if(!user){
+    h+='<p class="small">بياناتكِ محفوظة على هذا الجهاز فقط. سجّلي الدخول لمزامنتها بين أجهزتكِ.</p>'+
+       '<button class="btn" data-acc="login">🔐 تسجيل الدخول ومزامنة البيانات</button>';
+  }else{
+    const name=user.displayName||user.email||'مستخدم';
+    h+='<div class="acc-row"><span class="acc-user">👤 '+esc(name)+'</span>'+
+       '<button class="btn danger" data-acc="delete"'+(deleting?' disabled':'')+'>🗑️ حذف الحساب</button></div>'+
+       (user.displayName&&user.email?'<p class="small" style="margin:2px 0 8px">'+esc(user.email)+'</p>':'')+
+       '<div class="row"><span class="label">آخر مزامنة</span><span class="val">'+esc(lastSyncText())+'</span></div>'+
+       '<div class="row"><span class="label">الحالة</span><span class="val">'+esc(statusText())+'</span></div>'+
+       '<div class="actions"><button class="btn" data-acc="sync"'+((busy||deleting)?' disabled':'')+'>🔄 مزامنة الآن</button>'+
+       '<button class="btn alt" data-acc="logout"'+(deleting?' disabled':'')+'>تسجيل الخروج</button></div>';
+  }
+  box.innerHTML=h;
+}
+function bindCard(){
+  const box=document.getElementById('accountCard'); if(!box) return;
+  box.addEventListener('click',e=>{
+    const b=e.target.closest('[data-acc]'); if(!b||b.disabled) return;
+    const a=b.dataset.acc;
+    if(a==='login') openLogin();
+    else if(a==='sync') syncNow(false);
+    else if(a==='logout') doSignOut();
+    else if(a==='delete') openDelete();
+  });
+}
+
+function markSynced(){lsSet(SYNC_KEY,String(Date.now())); setStatus(timer?'pending':'ok');}
+
+async function doPush(noRetry){
+  const u=user; if(!u||deleting) return;
+  clearTimeout(timer); timer=null;
+  const ts=state.updatedAt||0; if(!ts) return;
+  const payload=JSON.stringify(state);
+  setStatus('syncing');
+  try{
+    const ref=db.collection('users').doc(u.uid);
+    const res=await db.runTransaction(async tx=>{
+      const snap=await tx.get(ref);
+      if(snap.exists&&(Number(snap.data().updatedAt)||0)>ts) return 'newer';
+      tx.set(ref,{data:payload,updatedAt:ts,schema:2});
+      return 'ok';
+    });
+    if(user!==u) return;
+    if(res==='newer'&&!noRetry) await reconcile(true);
+    if(status!=='error') markSynced();
+  }catch(e){if(user===u) setStatus('error',errAr(e));}
+}
+function pushNow(){
+  clearTimeout(timer); timer=null;
+  const run1=()=>doPush(false);
+  inflight=(inflight||Promise.resolve()).then(run1,run1);
+  return inflight;
+}
+function schedulePush(){
+  if(!configured||!user||deleting) return;
+  status='pending'; renderAccount();
+  clearTimeout(timer); timer=setTimeout(pushNow,1500);
+}
+async function reconcile(fromPush){
+  const u=user; const ref=db.collection('users').doc(u.uid);
+  const snap=await ref.get();
+  if(user!==u) return;
+  const cloudTs=snap.exists?(Number(snap.data().updatedAt)||0):0;
+  const localTs=state.updatedAt||0;
+  if(cloudTs>localTs){
+    const o=JSON.parse(snap.data().data);
+    const s=normalizeState(o); s.updatedAt=cloudTs;
+    state=s; save({keepStamp:true}); renderAll();
+  }else if(localTs>cloudTs&&!fromPush){
+    await doPush(true);
+  }
+}
+async function syncNow(silent){
+  if(!configured||!user||deleting||busy) return;
+  busy=true; setStatus('syncing');
+  try{
+    try{await inflight;}catch(e){}
+    await reconcile(false);
+    if(status!=='error'){markSynced(); if(!silent) toast('تمت المزامنة ✅');}
+    else if(!silent) toast('تعذّرت المزامنة');
+  }catch(e){
+    setStatus('error',errAr(e)); if(!silent) toast('تعذّرت المزامنة');
+  }
+  busy=false; renderAccount();
+}
+
+async function onAuth(u){
+  user=u; ready=true;
+  if(!u){clearTimeout(timer); timer=null; status='idle'; renderAccount(); return;}
+  renderAccount();
+  const owner=lsGet(OWNER_KEY);
+  if(owner&&owner!==u.uid){
+    state=defaultState(); save({keepStamp:true}); lsDel(SYNC_KEY); renderAll();
+  }
+  lsSet(OWNER_KEY,u.uid);
+  await syncNow(true);
+}
+async function doSignOut(){
+  try{if(timer) await pushNow();}catch(e){}
+  try{await auth.signOut(); toast('تم تسجيل الخروج');}catch(e){toast(errAr(e));}
+}
+
+function openLogin(){
+  openModal(
+    '<h3>🔐 تسجيل الدخول والمزامنة</h3>'+
+    '<p class="small">سجّلي الدخول لحفظ تقدّمكِ في السحابة ومتابعته من أي جهاز.</p>'+
+    '<button class="btn google" id="accGoogle" style="width:100%">تسجيل الدخول عبر Google</button>'+
+    '<p class="small" style="text-align:center;margin:12px 0 0">أو بالبريد الإلكتروني</p>'+
+    '<label>البريد الإلكتروني</label><input id="accEmail" type="email" autocomplete="email" dir="ltr">'+
+    '<label>كلمة المرور</label><input id="accPass" type="password" autocomplete="current-password" dir="ltr">'+
+    '<div class="actions"><button class="btn" id="accIn">دخول</button>'+
+    '<button class="btn alt" id="accUp">إنشاء حساب</button>'+
+    '<button class="btn alt" id="accClose">إغلاق</button></div>'+
+    '<p class="small" style="margin-top:8px"><a href="#" id="accForgot">نسيتُ كلمة المرور</a></p>'+
+    '<p class="acc-msg" id="accMsg"></p>');
+  const val=id=>q(id).value.trim();
+  q('#accClose').onclick=closeModal;
+  q('#accGoogle').onclick=()=>run(async()=>{
+    const pr=new firebase.auth.GoogleAuthProvider();
+    try{await auth.signInWithPopup(pr);}
+    catch(e){if(e.code==='auth/popup-blocked'){await auth.signInWithRedirect(pr);return;} throw e;}
+    closeModal();
+  });
+  q('#accIn').onclick=()=>run(async()=>{
+    const em=val('#accEmail'),pw=q('#accPass').value;
+    if(!em||!pw){msg('أدخلي البريد وكلمة المرور');return;}
+    await auth.signInWithEmailAndPassword(em,pw); closeModal();
+  });
+  q('#accUp').onclick=()=>run(async()=>{
+    const em=val('#accEmail'),pw=q('#accPass').value;
+    if(!em||!pw){msg('أدخلي البريد وكلمة المرور');return;}
+    await auth.createUserWithEmailAndPassword(em,pw); closeModal();
+  });
+  q('#accForgot').onclick=e=>{
+    e.preventDefault();
+    run(async()=>{
+      const em=val('#accEmail'); if(!em){msg('اكتبي بريدكِ أولاً');return;}
+      await auth.sendPasswordResetEmail(em); msg('أُرسل رابط إعادة التعيين إلى بريدكِ',true);
+    });
   };
 }
-function loadFbCfg(){
-  const def=defaultFbCfg();
+
+function openDelete(){
+  openModal(
+    '<h3>⚠️ حذف الحساب</h3>'+
+    '<p>سيتم حذف بياناتكِ من السحابة ثم حذف حسابكِ نهائياً، ولا يمكن التراجع عن ذلك.</p>'+
+    '<p class="small">النسخة المحفوظة على هذا الجهاز لا تُحذف، ويمكنكِ تصديرها من الإعدادات قبل المتابعة.</p>'+
+    '<div class="actions"><button class="btn danger" id="accDelOk">نعم، احذفي حسابي نهائياً</button>'+
+    '<button class="btn alt" id="accDelNo">إلغاء</button></div>'+
+    '<p class="acc-msg" id="accMsg"></p>',true);
+  q('#accDelNo').onclick=closeModal;
+  q('#accDelOk').onclick=doDelete;
+}
+async function doDelete(){
+  const u=user; if(!u) return;
+  deleting=true; clearTimeout(timer); timer=null; renderAccount();
+  lock(true); msg('');
   try{
-    const raw=localStorage.getItem(FB_CFG_KEY);
-    if(!raw) return def;
-    const saved=JSON.parse(raw)||{};
-    return Object.assign({}, def, {
-      mode: saved.mode || def.mode,
-      apiKey: saved.apiKey || def.apiKey,
-      projectId: saved.projectId || def.projectId,
-      dbUrl: saved.dbUrl || '',
-      docId: saved.docId || def.docId,
-      autoSync: saved.autoSync !== undefined ? saved.autoSync : def.autoSync,
-      lastSyncAt: saved.lastSyncAt || ''
+    try{await inflight;}catch(e){}
+    await db.collection('users').doc(u.uid).delete();
+    try{await u.delete();}
+    catch(e){
+      if(e.code==='auth/requires-recent-login'){openReauth(u);return;}
+      throw e;
+    }
+    finishDelete();
+  }catch(e){deleting=false; renderAccount(); lock(false); msg(errAr(e));}
+}
+function openReauth(u){
+  const google=((u.providerData[0]||{}).providerId)==='google.com';
+  openModal(
+    '<h3>🔒 تأكيد الهوية</h3>'+
+    '<p class="small">لأسباب أمنية يلزم تأكيد هويتكِ لإتمام حذف الحساب.</p>'+
+    (google
+      ?'<button class="btn google" id="accReG" style="width:100%">تأكيد عبر Google</button>'
+      :'<label>كلمة المرور</label><input id="accRePass" type="password" autocomplete="current-password" dir="ltr">'+
+       '<div class="actions"><button class="btn danger" id="accReOk">تأكيد وحذف الحساب</button></div>')+
+    '<div class="actions"><button class="btn alt" id="accReNo">إلغاء</button></div>'+
+    '<p class="acc-msg" id="accMsg"></p>',true);
+  q('#accReNo').onclick=()=>{deleting=false; closeModal(); renderAccount();};
+  if(google){
+    q('#accReG').onclick=()=>run(async()=>{
+      await u.reauthenticateWithPopup(new firebase.auth.GoogleAuthProvider());
+      await u.delete(); finishDelete();
     });
-  }catch(e){return def;}
-}
-let fbCfg=loadFbCfg();
-let syncStatusText='💾 محلي فقط';
-let _syncTimer=null;
-let _syncing=false;
-
-function saveFbCfg(next){
-  fbCfg=Object.assign(defaultFbCfg(),fbCfg,next||{});
-  fbCfg.apiKey=String(fbCfg.apiKey||'').trim();
-  fbCfg.projectId=String(fbCfg.projectId||'').trim();
-  fbCfg.dbUrl=String(fbCfg.dbUrl||'').trim().replace(/\/+$/,'');
-  fbCfg.docId=String(fbCfg.docId||'study_tracker_v2_main').trim().replace(/[^a-zA-Z0-9_-]/g,'_')||'study_tracker_v2_main';
-  fbCfg.autoSync=!!fbCfg.autoSync;
-  localStorage.setItem(FB_CFG_KEY,JSON.stringify(fbCfg));
-  renderSyncUI();
-}
-
-function isFbConfigured(){
-  if(fbCfg.mode==='rtdb') return !!fbCfg.dbUrl;
-  return !!(fbCfg.apiKey && fbCfg.projectId);
-}
-
-function setSyncStatus(txt){
-  syncStatusText=txt;
-  renderSyncUI();
-}
-
-function renderSyncUI(){
-  const pill=$('#syncStatusPill');
-  if(pill){
-    pill.textContent=isFbConfigured()?syncStatusText:'💾 محلي فقط (Firebase غير مضبوط)';
-  }
-  const info=$('#fbLastSyncInfo');
-  if(info){
-    info.textContent=fbCfg.lastSyncAt
-      ? ('آخر مزامنة ناجحة: '+fbCfg.lastSyncAt)
-      : 'آخر مزامنة: لم تتم بعد';
+  }else{
+    q('#accReOk').onclick=()=>run(async()=>{
+      const pw=q('#accRePass').value; if(!pw){msg('أدخلي كلمة المرور');return;}
+      await u.reauthenticateWithCredential(firebase.auth.EmailAuthProvider.credential(u.email,pw));
+      await u.delete(); finishDelete();
+    });
   }
 }
+function finishDelete(){
+  deleting=false; user=null; status='idle';
+  lsDel(OWNER_KEY); lsDel(SYNC_KEY);
+  closeModal(); renderAccount();
+  toast('تم حذف الحساب وبياناته السحابية');
+}
 
+function init(){
+  window.CloudSync={schedulePush,renderAccount,syncNow,pushNow};
+  bindCard(); renderAccount();
+  if(!configured) return;
+  const appName='studyTrackerApp';
+  const app=firebase.apps.find(a=>a.name===appName)||firebase.initializeApp(cfg,appName);
+  auth=app.auth(); auth.languageCode='ar';
+  db=app.firestore();
+  auth.onAuthStateChanged(onAuth);
+  auth.getRedirectResult().catch(e=>toast(errAr(e)));
+  window.addEventListener('online',()=>{if(user&&status==='error') syncNow(true);});
+  document.addEventListener('visibilitychange',()=>{
+    if(!user||deleting) return;
+    if(document.hidden){if(timer) pushNow();} else syncNow(true);
+  });
+}
+init();
+})();
 function mergeStatesSafely(localSt,remoteSt){
   const a=normalizeState(localSt);
   const b=normalizeState(remoteSt);
@@ -1410,14 +1616,6 @@ function renderSettings(){
   $('#setGoodDays').value=s.goodDays;
   $('#setEasyDays').value=s.easyDays;
   $('#setBaseEase').value=s.baseEase;
-
-  $('#fbMode').value=fbCfg.mode||'firestore';
-  $('#fbApiKey').value=fbCfg.apiKey||'';
-  $('#fbProjectId').value=fbCfg.projectId||'';
-  $('#fbDbUrl').value=fbCfg.dbUrl||'';
-  $('#fbDocId').value=fbCfg.docId||'study_tracker_v2_main';
-  $('#fbAutoSync').checked=!!fbCfg.autoSync;
-  renderSyncUI();
 }
 
 function exportJSON(){
@@ -1444,11 +1642,12 @@ function importJSON(file){
 function renderAll(){
   renderToday();
   renderSubjects();
-  renderSyncUI();
   if(typeof refreshImportTargets==='function') refreshImportTargets();
   if(typeof renderCalendar==='function') renderCalendar();
   if(typeof renderSettings==='function') renderSettings();
+  if(window.CloudSync) window.CloudSync.renderAccount();
 }
+
 function showView(v){
   $$('#tabs button').forEach(b=>b.classList.toggle('active',b.dataset.view===v));
   $$('.view').forEach(s=>s.classList.toggle('active',s.id==='view-'+v));
@@ -1564,22 +1763,6 @@ function bindRest(){
     const c=e.target.closest('.cal-cell[data-date]'); if(!c) return;
     selDate=c.dataset.date; renderCalendar();
   });
-
-  $('#saveFbBtn').addEventListener('click',()=>{
-    saveFbCfg({
-      mode:$('#fbMode').value,
-      apiKey:$('#fbApiKey').value,
-      projectId:$('#fbProjectId').value,
-      dbUrl:$('#fbDbUrl').value,
-      docId:$('#fbDocId').value,
-      autoSync:$('#fbAutoSync').checked
-    });
-    toast('تم حفظ إعدادات Firebase ✅');
-    if(isFbConfigured() && fbCfg.autoSync) syncNow({silent:true});
-  });
-  $('#syncNowBtn').addEventListener('click',()=>syncNow());
-  $('#pullCloudBtn').addEventListener('click',()=>syncNow({forcePull:true}));
-  $('#pushCloudBtn').addEventListener('click',()=>syncNow({forcePush:true}));
 
   $('#saveSettings').addEventListener('click',()=>{
     applySettings({
