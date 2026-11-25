@@ -859,3 +859,150 @@ function bindSubjects(){
     renderAll();
   });
 }
+
+/* ===================== الجزء 4: التقويم والإعدادات والتشغيل ===================== */
+let calMode='month', calCursor=todayStr(), selDate=todayStr();
+const ICONS={done:'✅',today:'📍',future:'📅',late:'⏳',fri:'🌿',sat:'🔄',none:''};
+const STATUS_AR={done:'منجز',today:'اليوم',future:'مجدول',late:'فائت',fri:'يوم خفيف',sat:'مراجعة أسبوعية',none:'قبل بداية الخطة'};
+const shortAr=s=>{const d=parseDate(s);return d.getDate()+' '+MONTHS_AR[d.getMonth()];};
+const shiftMonth=(s,n)=>{const d=parseDate(s);d.setDate(1);d.setMonth(d.getMonth()+n);return fmtDate(d);};
+
+/* ---------- التقويم ---------- */
+function renderCalendar(){
+  const grid=$('#calGrid'); if(!grid) return;
+  $('#calMode').value=calMode;
+  let start,end,title;
+  if(calMode==='month'){
+    const d=parseDate(calCursor);
+    start=fmtDate(new Date(d.getFullYear(),d.getMonth(),1,12));
+    end=fmtDate(new Date(d.getFullYear(),d.getMonth()+1,0,12));
+    title=MONTHS_AR[d.getMonth()]+' '+d.getFullYear();
+  }else{
+    start=addDays(calCursor,-dow(calCursor)); end=addDays(start,6);
+    title='أسبوع '+shortAr(start)+' – '+shortAr(end)+' '+parseDate(end).getFullYear();
+  }
+  $('#calTitle').textContent=title;
+  const proj=project(end);                       // إسقاط المهام المستقبلية من أول يوم معلّق
+  let html=DAYS_AR.map(n=>'<div class="cal-dow">'+n+'</div>').join('');
+  if(calMode==='month'){for(let i=0;i<dow(start);i++) html+='<div class="cal-cell empty"></div>';}
+  let d=start,g=0;
+  while(d<=end&&g++<40){
+    const info=dayInfo(d,proj);
+    const cls=['cal-cell',info.status==='none'?'future':info.status];
+    if(info.isToday&&info.status==='done') cls.push('today');
+    if(d===selDate) cls.push('sel');
+    html+='<div class="'+cls.join(' ')+'" data-date="'+d+'"><span class="n">'+parseDate(d).getDate()+'</span><span class="ic">'+ICONS[info.status]+'</span></div>';
+    d=addDays(d,1);
+  }
+  grid.innerHTML=html;
+  renderDayDetail();
+}
+
+function renderDayDetail(){
+  const box=$('#dayDetail'); if(!box||!selDate) return;
+  const info=dayInfo(selDate,null),rec=info.rec;
+  const tagCls=info.status==='late'?'red':(info.status==='sat'?'violet':(info.status==='fri'?'teal':'amber'));
+  let html='<h3>'+fmtAr(selDate)+' <span class="tag '+tagCls+'">'+STATUS_AR[info.status]+'</span></h3>';
+  const sec=(t,arr,msg)=>secTitle(t)+lesList(arr,false,msg||'لا شيء');
+
+  if(rec&&rec.done){
+    if(rec.kind==='work'){
+      html+=sec('الدروس الجديدة',lessonsOf(rec.ids),'لا دروس جديدة في هذا اليوم')+
+            sec('الماضي القريب',lessonsOf(rec.near))+
+            sec('المراجعة السريعة',lessonsOf(rec.quick));
+    }else{
+      html+=sec('دروس الأسبوع',lessonsOf(rec.week))+
+            sec('مراجعة جزء من القديم',lessonsOf(rec.quick));
+    }
+    if(rec.makeup) html+='<p class="small">سُجّل هذا اليوم بالتعويض.</p>';
+  }else if(info.status==='none'){
+    html+='<p class="small">هذا اليوم قبل بداية الخطة.</p>';
+  }else if(info.kind==='fri'){
+    html+='<p class="small">يوم تخفيف وراحة، بدون دروس جديدة أو مراجعة ثقيلة، ولا تُرحَّل إليه أي مهام.</p>';
+  }else if(info.status==='late'){
+    html+='<p class="small">لم يُؤكَّد هذا اليوم، فأُعيد توزيع دروسه تلقائياً على الأيام المتبقية. يمكنكِ تعويضه من لوحة اليوم.</p>';
+  }else{
+    const t=project(selDate)[selDate];
+    if(!t){html+='<p class="small">لا تتوفر تفاصيل لهذا اليوم.</p>';}
+    else if(t.kind==='work'){
+      html+=sec('الدروس الجديدة',t.newL,'لا دروس جديدة: اكتمل هدف الأسبوع أو لا توجد دروس مضافة')+
+            sec('الماضي القريب',t.near)+
+            sec('المراجعة السريعة',t.quick)+
+            '<p class="small">المهام المستقبلية متوقعة بناءً على إنجازكِ الحالي، وقد تتغير إن تأخرتِ أو عدّلتِ المواد.</p>';
+    }else if(t.kind==='sat'){
+      html+=sec('دروس الأسبوع (متوقعة)',t.week)+
+            sec('مراجعة جزء من القديم',t.quick)+
+            sec('تحضير الأحد',t.sunPrep);
+    }
+  }
+  box.innerHTML=html;
+}
+
+/* ---------- الإعدادات ---------- */
+function renderSettings(){
+  const box=$('#view-settings'); if(!box) return;
+  if(box.contains(document.activeElement)&&document.activeElement.tagName!=='BUTTON') return;
+  const s=state.settings;
+  $('#setStartDate').value=s.startDate; $('#setNear').value=s.near;
+  $('#setQuick').value=s.quick; $('#setSatCap').value=s.satCap;
+}
+
+/* ---------- التصدير والاستيراد ---------- */
+function exportJSON(){
+  const blob=new Blob([JSON.stringify(state,null,2)],{type:'application/json'});
+  const a=document.createElement('a');
+  a.href=URL.createObjectURL(blob); a.download='study-tracker-backup-'+todayStr()+'.json';
+  document.body.appendChild(a); a.click(); a.remove();
+  setTimeout(()=>URL.revokeObjectURL(a.href),1000);
+  toast('تم تصدير النسخة الاحتياطية');
+}
+function importJSON(file){
+  const r=new FileReader();
+  r.onload=()=>{
+    try{
+      const o=JSON.parse(r.result);
+      if(!o||typeof o!=='object'||!o.settings||!Array.isArray(o.subjects)) throw new Error('bad');
+      if(!confirm('سيتم استبدال بياناتكِ الحالية بالنسخة المستوردة، هل أنتِ متأكدة؟')) return;
+      state=normalizeState(o); save(); openChaps.clear(); renderAll(); toast('تم استيراد النسخة بنجاح ✅');
+    }catch(e){toast('الملف غير صالح');}
+  };
+  r.readAsText(file);
+}
+
+/* ---------- الربط والتشغيل ---------- */
+function bindRest(){
+  $('#calPrev').addEventListener('click',()=>{calCursor=calMode==='month'?shiftMonth(calCursor,-1):addDays(calCursor,-7);renderCalendar();});
+  $('#calNext').addEventListener('click',()=>{calCursor=calMode==='month'?shiftMonth(calCursor,1):addDays(calCursor,7);renderCalendar();});
+  $('#calMode').addEventListener('change',e=>{calMode=e.target.value;renderCalendar();});
+  $('#calGrid').addEventListener('click',e=>{
+    const c=e.target.closest('.cal-cell[data-date]'); if(!c) return;
+    selDate=c.dataset.date; renderCalendar();
+  });
+  $('#saveSettings').addEventListener('click',()=>{
+    applySettings({startDate:$('#setStartDate').value,near:$('#setNear').value,
+      quick:$('#setQuick').value,satCap:$('#setSatCap').value});
+    document.activeElement&&document.activeElement.blur();
+    renderAll(); toast('تم حفظ الإعدادات ✅');
+  });
+  $('#exportBtn').addEventListener('click',exportJSON);
+  $('#importFile').addEventListener('change',e=>{
+    const f=e.target.files[0]; if(f) importJSON(f); e.target.value='';
+  });
+  $('#resetBtn').addEventListener('click',()=>{
+    if(!confirm('سيتم مسح كل البيانات نهائياً. يُنصح بتصدير نسخة احتياطية أولاً. متابعة؟')) return;
+    resetAll(); openChaps.clear(); renderAll(); toast('تم مسح البيانات');
+  });
+}
+
+function init(){
+  bindToday();
+  bindSubjects();
+  bindRest();
+  renderAll();
+  let last=todayStr();
+  setInterval(()=>{const n=todayStr();if(n!==last){last=n;calCursor=n;selDate=n;renderAll();}},60000);
+}
+init();
+</script>
+</body>
+</html>
