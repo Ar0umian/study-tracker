@@ -95,6 +95,7 @@ details.subj-card[open] .subj-head .chev{transform:rotate(-90deg)}
 .les:last-child{border-bottom:0}
 .les.done{color:var(--teal)}
 .add-chap{margin-top:12px;padding-top:10px;border-top:1px dashed var(--line)}
+.imp-block{border:1px solid var(--line);border-radius:12px;padding:12px 14px;margin-top:10px;background:#fbfcff}
 
 /* التقويم */
 .cal-head{display:flex;align-items:center;justify-content:space-between;gap:8px;margin-bottom:10px;flex-wrap:wrap}
@@ -164,12 +165,21 @@ details.subj-card[open] .subj-head .chev{transform:rotate(-90deg)}
           <option value="3">3 شباتر أسبوعياً</option>
           <option value="4">4 شباتر أسبوعياً</option>
         </select>
+        <label>مدة الدراسة للمادة (تبقى للمراجعة المستمرة بعدها)</label>
+        <select id="impMonths">
+          <option value="">حسب الملف (وإلا 3 أشهر)</option>
+          <option value="1">شهر واحد</option>
+          <option value="2">شهران</option>
+          <option value="3">3 أشهر (سمستر)</option>
+          <option value="6">6 أشهر</option>
+          <option value="0">مفتوحة (بلا مدة انتهاء دراسة)</option>
+        </select>
       </div>
       <label>ارفعي ملف ‎.txt‎ أو ‎.json</label>
       <input id="impFile" type="file" accept=".txt,.json,text/plain,application/json">
       <label>أو الصقي المحتوى هنا</label>
-      <textarea id="impText" placeholder="المادة: اسم المادة (اختياري)&#10;# الشابتر الأول&#10;درس 1&#10;درس 2&#10;شابتر: الشابتر الثاني&#10;درس 3"></textarea>
-      <p class="small">في ملف txt: سطر الشابتر يبدأ بـ <b>#</b> أو <b>شابتر:</b> أو <b>فصل:</b> أو <b>Chapter:</b>، وكل سطر تحته درس، والأسطر الفارغة تُتجاهل. ويمكن اختيارياً كتابة <b>المادة:</b> و<b>الإيقاع:</b> في أول الملف.</p>
+      <textarea id="impText" placeholder="المادة: Python Fundamentals&#10;الإيقاع: 1&#10;المدة: 3&#10;# الفصل الأول&#10;درس 1&#10;&#10;المادة: C Programming&#10;الإيقاع: 1&#10;المدة: 3&#10;# الفصل الأول&#10;درس 1"></textarea>
+      <p class="small">يمكن لصق أكثر من مادة في نص واحد بكتابة <b>المادة:</b> لكل مادة؛ وستظهر كل مادة كبلوك مستقل في المعاينة وتُضاف كمواد منفصلة.</p>
       <div class="imp-sample">
         <button class="btn alt sm" id="impSampleTxt" type="button">⬇️ نموذج TXT</button>
         <button class="btn alt sm" id="impSampleJson" type="button">⬇️ نموذج JSON</button>
@@ -282,6 +292,15 @@ const fmtDate=d=>d.getFullYear()+'-'+pad(d.getMonth()+1)+'-'+pad(d.getDate());
 const parseDate=s=>{const [y,m,d]=s.split('-').map(Number);return new Date(y,m-1,d,12,0,0);};
 const todayStr=()=>fmtDate(new Date());
 const addDays=(s,n)=>{const d=parseDate(s);d.setDate(d.getDate()+n);return fmtDate(d);};
+const addMonths=(s,m)=>{
+  const d=parseDate(s);
+  const targetMonth=d.getMonth()+m;
+  const day=d.getDate();
+  const candidate=new Date(d.getFullYear(),targetMonth,1,12,0,0);
+  const lastDay=new Date(candidate.getFullYear(),candidate.getMonth()+1,0,12,0,0).getDate();
+  candidate.setDate(Math.min(day,lastDay));
+  return fmtDate(candidate);
+};
 const dow=s=>parseDate(s).getDay();
 const kind=s=>{const w=dow(s);return w<=4?'work':(w===5?'fri':'sat');};
 const fmtAr=s=>{const d=parseDate(s);return DAYS_AR[d.getDay()]+' '+d.getDate()+' '+MONTHS_AR[d.getMonth()]+' '+d.getFullYear();};
@@ -336,10 +355,16 @@ function normalizeState(o){
   const used=new Set();
   const subjects=(Array.isArray(o.subjects)?o.subjects:[]).filter(s=>s&&typeof s==='object').map(s=>{
     let sq=parseInt(s.seq); if(!sq||used.has(sq)) sq=++seq; used.add(sq); seq=Math.max(seq,sq);
+    const rawMonths=s.studyMonths!==undefined?s.studyMonths:3;
+    const studyMonths=rawMonths===0||rawMonths==='0'?0:clamp(parseInt(rawMonths)||3,0,24);
+    const studyStart=/^\d{4}-\d{2}-\d{2}$/.test(s.studyStart||'')?s.studyStart:st.startDate;
     return {
       id:String(s.id||('s'+sq)), seq:sq, name:String(s.name||'مادة'),
-      pace:clamp(parseInt(s.pace)||1,1,4), status:s.status==='paused'?'paused':'active',
-      chapters:(Array.isArray(s.chapters)?s.chapters:[]).filter(c=>c&&typeof c==='object').map(c=>({
+      pace:clamp(parseInt(s.pace)||1,1,4),
+      studyMonths,
+      studyStart,
+      status:s.status==='paused'?'paused':'active',
+      chapters:(Array.isArray(s.chapters)?o.chapters||s.chapters:[]).filter(c=>c&&typeof c==='object').map(c=>({
         id:String(c.id||('c'+(++seq))), title:String(c.title||'شابتر'),
         lessons:(Array.isArray(c.lessons)?c.lessons:[]).filter(l=>l&&typeof l==='object').map(l=>({
           id:String(l.id||('l'+(++seq))), title:String(l.title||'درس'), prep:String(l.prep||'')
@@ -411,9 +436,26 @@ function idx(){
   _idx={flat,byId}; return _idx;
 }
 const subj=id=>state.subjects.find(s=>s.id===id);
+const lessonsOf=ids=>{const I=idx();return (ids||[]).map(id=>I.byId[id]).filter(Boolean);};
 const totalLessons=s=>(idx().flat[s.id]||[]).length;
 const progOf=s=>Math.min(state.prog[s.id]||0,totalLessons(s));
 function chapEnds(s){let n=0;const out=[];s.chapters.forEach(c=>{if(c.lessons.length){n+=c.lessons.length;out.push(n);}});return out;}
+
+function studyEndDate(s){
+  const m=parseInt(s.studyMonths);
+  if(!m||m<=0) return null;
+  const base=s.studyStart||state.settings.startDate||todayStr();
+  return addMonths(base,m);
+}
+function isStudyExpiredOn(s,date){
+  const end=studyEndDate(s);
+  if(!end) return false;
+  return date>end;
+}
+function canScheduleNewOn(s,date){
+  if(!s||s.status==='paused') return false;
+  return !isStudyExpiredOn(s,date);
+}
 
 function cloneS(S){
   return {
@@ -431,7 +473,7 @@ function ensureWeek(S,date){
   if(S.wkWeek!==ws){S.wk={};S.wkWeek=ws;}
   const I=idx();
   state.subjects.forEach(s=>{
-    if(s.status==='paused'||S.wk[s.id]!==undefined) return;
+    if(!canScheduleNewOn(s,date)||S.wk[s.id]!==undefined) return;
     const p=Math.min(S.prog[s.id]||0,(I.flat[s.id]||[]).length);
     const ends=chapEnds(s).filter(e=>e>p);
     S.wk[s.id]=ends.length?ends[Math.min(s.pace,ends.length)-1]:p;
@@ -555,7 +597,7 @@ function buildWorkTask(S,date){
   const rem=Math.max(1,5-dow(date));
   const newL=[];
   state.subjects.forEach(s=>{
-    if(s.status==='paused') return;
+    if(!canScheduleNewOn(s,date)) return;
     const fl=I.flat[s.id]||[];
     const p=Math.min(S.prog[s.id]||0,fl.length);
     const tgt=Math.min(S.wk[s.id]===undefined?p:S.wk[s.id],fl.length);
@@ -798,6 +840,12 @@ function deleteSubject(sid){
   delete state.prog[sid]; delete state.wk[sid]; structChanged();
 }
 function setPace(sid,n){const s=subj(sid); if(!s) return; s.pace=clamp(parseInt(n)||1,1,4); structChanged();}
+function setStudyMonths(sid,m){
+  const s=subj(sid); if(!s) return;
+  s.studyMonths=(m===0||m==='0')?0:clamp(parseInt(m)||3,0,24);
+  if(!s.studyStart) s.studyStart=state.settings.startDate||todayStr();
+  structChanged();
+}
 function setStatus(sid,st){const s=subj(sid); if(!s) return; s.status=st==='paused'?'paused':'active'; structChanged();}
 function renameSubject(sid,name){const s=subj(sid); name=String(name||'').trim(); if(!s||!name) return; s.name=name; save();}
 function setPrep(lid,text){
@@ -809,6 +857,15 @@ const card=(title,inner)=>'<div class="card"><h3>'+title+'</h3>'+inner+'</div>';
 const rowsHtml=r=>r.map(x=>'<div class="row"><span class="label">'+x[0]+'</span><span class="val">'+x[1]+'</span></div>').join('');
 const secTitle=t=>'<div style="font-weight:700;color:var(--brand-d);margin-top:10px">'+t+'</div>';
 const dayLabel=s=>DAYS_AR[dow(s)]+' '+parseDate(s).getDate()+' '+MONTHS_AR[parseDate(s).getMonth()];
+const monthsLabel=m=>!m?'مدة مفتوحة':(m===1?'شهر واحد':(m===2?'شهران':m+' أشهر'));
+
+function subjBadge(s,onDate){
+  const tot=totalLessons(s),p=progOf(s);
+  if(s.status==='paused') return '<span class="tag amber">متوقفة مؤقتاً</span>';
+  if(isStudyExpiredOn(s,onDate||todayStr())) return '<span class="tag violet">مرحلة مراجعة مستمرة</span>';
+  if(tot&&p>=tot) return '<span class="tag violet">منتهية: مراجعة وتكرار متباعد</span>';
+  return '<span class="tag teal">قيد الدراسة</span>';
+}
 
 function srsBadge(srs){
   if(!srs||!srs.lastRating) return '';
@@ -846,12 +903,18 @@ function simpleList(arr,emptyMsg){
 }
 
 function goalsCard(){
-  const S=cloneS(state); ensureWeek(S,todayStr());
+  const t=todayStr();
+  const S=cloneS(state); ensureWeek(S,t);
   const rows=[];
   state.subjects.forEach(s=>{
     const tot=totalLessons(s); if(!tot) return;
     const p=progOf(s);
     if(s.status==='paused'){rows.push([esc(s.name),'<span class="tag amber">متوقفة مؤقتاً</span>']);return;}
+    if(isStudyExpiredOn(s,t)){
+      const endD=studyEndDate(s);
+      rows.push([esc(s.name),'<span class="tag violet">انتهت مدة الدراسة ('+endD+') — مراجعة مستمرة</span>']);
+      return;
+    }
     if(p>=tot){rows.push([esc(s.name),'<span class="tag violet">منتهية: مراجعة وتكرار متباعد</span>']);return;}
     const tgt=Math.min(S.wk[s.id]===undefined?p:S.wk[s.id],tot);
     const left=Math.max(0,tgt-p);
@@ -883,7 +946,7 @@ function renderToday(){
     const T=todayTask();
     if(k==='work'){
       cards+=card('📖 دروس اليوم الجديدة (تقييم مستقل لكل درس)',
-        rateableList(T.newL,'لا دروس جديدة اليوم: اكتمل هدف الأسبوع أو لا توجد دروس مضافة.',false));
+        rateableList(T.newL,'لا دروس جديدة اليوم: اكتمل هدف الأسبوع، أو انتهت مدة دراسة المادة، أو لا توجد دروس مضافة.',false));
       cards+=card('🔁 مراجعة قريبة (آخر '+(state.settings.nearDays||5)+' أيام دراسة)',
         rateableList(T.near,'لا توجد دروس في نافذة الأيام الخمسة الأخيرة بعد.',false));
       cards+=card('⚡ مراجعة بعيدة وتكرار متباعد (حصة: '+(T.quota||0)+')',
@@ -935,8 +998,10 @@ function renderSubjects(){
     box.innerHTML='<div class="card"><p class="small">لا توجد مواد بعد. استوردي أول مادة من بطاقة الاستيراد أعلاه.</p></div>';
     return;
   }
+  const t=todayStr();
   box.innerHTML=state.subjects.map(s=>{
     const tot=totalLessons(s),p=progOf(s),pct=tot?Math.round(p/tot*100):0;
+    const endD=studyEndDate(s);
     let start=0;
     const chaps=s.chapters.map(c=>{
       const n=c.lessons.length,dn=clamp(p-start,0,n),fin=n>0&&dn>=n;
@@ -960,19 +1025,32 @@ function renderSubjects(){
       start+=n; return html;
     }).join('');
     const paceOpts=[1,2,3,4].map(n=>'<option value="'+n+'"'+(s.pace===n?' selected':'')+'>'+(n===1?'شابتر واحد أسبوعياً':n+' شباتر أسبوعياً')+'</option>').join('');
+    const monthChoices=[
+      [1,'مدة الدراسة: شهر واحد'],
+      [2,'مدة الدراسة: شهران'],
+      [3,'مدة الدراسة: 3 أشهر'],
+      [6,'مدة الدراسة: 6 أشهر'],
+      [0,'مدة الدراسة: مفتوحة']
+    ];
+    const monthOpts=monthChoices.map(([val,lbl])=>'<option value="'+val+'"'+(Number(s.studyMonths||0)===val?' selected':'')+'>'+lbl+'</option>').join('');
+    const durInfo=endD?('مدة الدراسة: '+monthsLabel(s.studyMonths)+' (تنتهي الدروس الجديدة: '+endD+')'):'مدة الدراسة: مفتوحة';
+
     return '<details class="card subj-card" data-sid="'+s.id+'"'+(openSubjs.has(s.id)?' open':'')+'>'+
       '<summary class="subj-sum">'+
         '<div class="subj-head"><h3><span class="chev">◀</span> '+esc(s.name)+'</h3>'+
-        '<span>'+(s.status==='paused'?'<span class="tag amber">متوقفة مؤقتاً</span>':(tot&&p>=tot?'<span class="tag violet">منتهية</span>':'<span class="tag teal">نشطة</span>'))+'</span></div>'+
+        '<span>'+subjBadge(s,t)+'</span></div>'+
         '<div class="bar"><i style="width:'+pct+'%"></i></div>'+
-        '<div class="small">'+p+' من '+tot+' درس ('+pct+'%) — '+s.chapters.length+' شباتر</div>'+
+        '<div class="small">'+p+' من '+tot+' درس ('+pct+'%) — '+s.chapters.length+' شباتر • '+durInfo+'</div>'+
       '</summary>'+
       '<div class="subj-body">'+
-        '<div class="actions"><select data-pace="'+s.id+'" style="width:auto">'+paceOpts+'</select>'+
-        '<button class="btn alt sm" data-act="toggle" data-s="'+s.id+'">'+(s.status==='paused'?'▶️ استئناف':'⏸️ إيقاف مؤقت')+'</button>'+
-        '<button class="btn alt sm" data-act="import" data-s="'+s.id+'">📥 استيراد</button>'+
-        '<button class="btn alt sm" data-act="rename" data-s="'+s.id+'">✏️ إعادة تسمية</button>'+
-        '<button class="btn warn sm" data-act="delsubj" data-s="'+s.id+'">🗑️ حذف المادة</button></div>'+
+        '<div class="actions">'+
+          '<select data-pace="'+s.id+'" style="width:auto">'+paceOpts+'</select>'+
+          '<select data-months="'+s.id+'" style="width:auto">'+monthOpts+'</select>'+
+          '<button class="btn alt sm" data-act="toggle" data-s="'+s.id+'">'+(s.status==='paused'?'▶️ استئناف':'⏸️ إيقاف مؤقت')+'</button>'+
+          '<button class="btn alt sm" data-act="import" data-s="'+s.id+'">📥 استيراد</button>'+
+          '<button class="btn alt sm" data-act="rename" data-s="'+s.id+'">✏️ إعادة تسمية</button>'+
+          '<button class="btn warn sm" data-act="delsubj" data-s="'+s.id+'">🗑️ حذف المادة</button>'+
+        '</div>'+
         chaps+
         '<div class="add-chap"><b>➕ شابتر جديد</b>'+
         '<label>اسم الشابتر</label><input id="chT-'+s.id+'" placeholder="مثال: الفصل الأول: مقدمة">'+
@@ -1147,8 +1225,10 @@ function bindSubjects(){
   },true);
 
   box.addEventListener('change',e=>{
-    const sel=e.target.closest('select[data-pace]'); if(!sel) return;
-    setPace(sel.dataset.pace,sel.value); toast('تم تعديل الإيقاع، وأُعيد حساب الجدول'); renderAll();
+    const paceSel=e.target.closest('select[data-pace]');
+    if(paceSel){setPace(paceSel.dataset.pace,paceSel.value); toast('تم تعديل الإيقاع، وأُعيد حساب الجدول'); renderAll(); return;}
+    const mSel=e.target.closest('select[data-months]');
+    if(mSel){setStudyMonths(mSel.dataset.months,mSel.value); toast('تم تحديث مدة دراسة المادة'); renderAll();}
   });
 
   box.addEventListener('click',e=>{
@@ -1240,14 +1320,16 @@ const impClean=t=>String(t==null?'':t)
 const RE_CH=/^(?:#{1,6}\s+|(?:الشابتر|شابتر|الفصل|فصل|chapter)\s*[:：]\s*)(.+)$/i;
 const RE_SUB=/^(?:المادة|مادة|subject|course)\s*[:：]\s*(.+)$/i;
 const RE_PACE=/^(?:الإيقاع|الايقاع|pace)\s*[:：]\s*([0-9٠-٩]+)/i;
+const RE_MONTHS=/^(?:المدة|مدة|الأشهر|الاشهر|months)\s*[:：]\s*([0-9٠-٩]+)/i;
 
-function parseImportTxt(text){
-  const chapters=[],warn=[]; let cur=null,name='',pace=0,implicit=false;
+function parseSingleTxtBlock(text){
+  const chapters=[],warn=[]; let cur=null,name='',pace=0,studyMonths=null,implicit=false;
   text.split(/\r?\n/).forEach(line=>{
-    const ln=line.trim(); if(!ln) return;
+    const ln=line.trim(); if(!ln||/^-{3,}$/.test(ln)) return;
     let m;
     if((m=ln.match(RE_SUB))){name=m[1].trim();return;}
     if((m=ln.match(RE_PACE))){pace=parseInt(toEn(m[1]))||0;return;}
+    if((m=ln.match(RE_MONTHS))){studyMonths=clamp(parseInt(toEn(m[1]))||0,0,24);return;}
     if((m=ln.match(RE_CH))){cur={title:m[1].trim().slice(0,200),lessons:[]};chapters.push(cur);return;}
     const t=impClean(ln); if(!t) return;
     if(!cur){cur={title:'',lessons:[]};chapters.push(cur);implicit=true;}
@@ -1256,16 +1338,59 @@ function parseImportTxt(text){
   const ok=chapters.filter(c=>c.lessons.length),empty=chapters.length-ok.length;
   if(implicit) warn.push('وُجدت دروس قبل أول عنوان شابتر، فوُضعت في شابتر باسم تلقائي');
   if(empty) warn.push('تم تجاهل '+empty+' شابتر بلا دروس');
-  if(!ok.length) return {err:'لم أجد أي شابتر أو دروس في المحتوى'};
-  return {name,pace:clamp(pace,0,4),chapters:ok,warn};
+  if(!ok.length) return {err:'لم أجد أي شابتر أو دروس في هذا البلوك'};
+  return {name,pace:clamp(pace,0,4),studyMonths,chapters:ok,warn};
+}
+
+function parseImportTxt(text){
+  const lines=text.split(/\r?\n/);
+  const blocks=[];
+  let curLines=[];
+  let subCount=0;
+  lines.forEach(ln=>{
+    if(RE_SUB.test(ln.trim())){
+      subCount++;
+      if(subCount>1 && curLines.length){
+        blocks.push(curLines.join('\n'));
+        curLines=[ln];
+        return;
+      }
+    }
+    curLines.push(ln);
+  });
+  if(curLines.length) blocks.push(curLines.join('\n'));
+
+  if(blocks.length>1){
+    const items=[];
+    for(const blk of blocks){
+      const p=parseSingleTxtBlock(blk);
+      if(p.err) return {err:p.err};
+      items.push(p);
+    }
+    return {multi:true,items};
+  }
+  return parseSingleTxtBlock(text);
 }
 
 function parseImportJSON(o){
-  const warn=[]; let name='',pace=0,chs;
+  if(o && typeof o==='object' && Array.isArray(o.subjects) && o.subjects.length){
+    const items=[];
+    for(const subObj of o.subjects){
+      const single=parseImportJSON(subObj);
+      if(single.err) return single;
+      items.push(single);
+    }
+    return {multi:true,items};
+  }
+  const warn=[]; let name='',pace=0,studyMonths=null,chs;
   if(Array.isArray(o)) chs=o;
   else if(o&&typeof o==='object'){
     name=String(o.name||o.subject||o.title||'').trim();
     pace=parseInt(o.pace||o.chaptersPerWeek)||0;
+    if(o.studyMonths!==undefined||o.months!==undefined){
+      const rawM=o.studyMonths!==undefined?o.studyMonths:o.months;
+      studyMonths=clamp(parseInt(rawM)||0,0,24);
+    }
     chs=o.chapters;
     if(!Array.isArray(chs)) return {err:'لم أجد مصفوفة الشباتر: يجب أن يحتوي الملف على المفتاح "chapters"'};
   }else return {err:'بنية JSON غير مدعومة'};
@@ -1287,7 +1412,7 @@ function parseImportJSON(o){
   });
   if(empty) warn.push('تم تجاهل '+empty+' شابتر بلا دروس');
   if(!chapters.length) return {err:'لا توجد شباتر ودروس صالحة في الملف'};
-  return {name,pace:clamp(pace,0,4),chapters,warn};
+  return {name,pace:clamp(pace,0,4),studyMonths,chapters,warn};
 }
 function parseImport(raw){
   const text=String(raw||'').replace(/^\uFEFF/,'').trim();
@@ -1299,13 +1424,23 @@ function parseImport(raw){
   return parseImportTxt(text);
 }
 
-function applyImport(P,target,name,pace){
+function applySingleImport(P,target,name,pace,monthsSel){
   let s;
   if(target==='new'){
     name=String(name||P.name||'').trim();
     if(!name) return {err:'اكتبي اسم المادة الجديدة'};
     const seq=++state.seq;
-    s={id:'s'+seq,seq,name,pace:clamp(parseInt(pace)||parseInt(P.pace)||1,1,4),status:'active',chapters:[]};
+    let studyMonths=3;
+    if(monthsSel!==''&&monthsSel!==undefined&&monthsSel!==null) studyMonths=clamp(parseInt(monthsSel)||0,0,24);
+    else if(P.studyMonths!==null&&P.studyMonths!==undefined) studyMonths=clamp(parseInt(P.studyMonths)||0,0,24);
+    s={
+      id:'s'+seq,seq,name,
+      pace:clamp(parseInt(pace)||parseInt(P.pace)||1,1,4),
+      studyMonths,
+      studyStart:state.settings.startDate||todayStr(),
+      status:'active',
+      chapters:[]
+    };
     state.subjects.push(s);
   }else{
     s=subj(target); if(!s) return {err:'المادة غير موجودة'};
@@ -1317,8 +1452,26 @@ function applyImport(P,target,name,pace){
       lessons:c.lessons.map(l=>({id:'l'+(++state.seq),title:l.title,prep:l.prep||''}))});
     ch++; ls+=c.lessons.length;
   });
-  structChanged();
   return {s,ch,ls};
+}
+
+function applyImport(P,target,name,pace,monthsSel){
+  if(P.multi && Array.isArray(P.items)){
+    let totalCh=0,totalLs=0,created=0;
+    for(let i=0;i<P.items.length;i++){
+      const item=P.items[i];
+      const itemName=i===0?(name||item.name):item.name;
+      const r=applySingleImport(item,'new',itemName,pace,monthsSel);
+      if(r.err) return r;
+      created++; totalCh+=r.ch; totalLs+=r.ls;
+    }
+    structChanged();
+    return {multi:true,created,ch:totalCh,ls:totalLs};
+  }
+  const r=applySingleImport(P,target,name,pace,monthsSel);
+  if(r.err) return r;
+  structChanged();
+  return r;
 }
 
 function refreshImportTargets(){
@@ -1331,27 +1484,45 @@ function refreshImportTargets(){
   }
   document.getElementById('impNewBox').style.display=sel.value==='new'?'block':'none';
 }
+function renderBlockHtml(P,baseChapIdx,overrideName,overrideMonths){
+  const nL=P.chapters.reduce((a,c)=>a+c.lessons.length,0);
+  const nm=(overrideName||P.name||'مادة بدون اسم').trim();
+  const mVal=(overrideMonths!==''&&overrideMonths!==undefined&&overrideMonths!==null)
+    ?clamp(parseInt(overrideMonths)||0,0,24)
+    :(P.studyMonths!==null&&P.studyMonths!==undefined?P.studyMonths:3);
+  let h='<div class="imp-block"><b>📘 '+esc(nm)+'</b> <span class="tag">'+monthsLabel(mVal)+'</span> <span class="small">('+P.chapters.length+' شابتر — '+nL+' درس)</span>';
+  if(P.warn&&P.warn.length) h+='<div class="banner" style="margin-top:8px">⚠️ '+P.warn.map(esc).join('<br>⚠️ ')+'</div>';
+  h+=P.chapters.slice(0,40).map((c,i)=>
+    '<details class="chap"><summary>'+(c.title?esc(c.title):'<span class="small">(بدون اسم، سيُسمّى «شابتر '+(baseChapIdx+i+1)+'»)</span>')+
+    ' <span class="small">('+c.lessons.length+' درس)</span></summary>'+
+    c.lessons.slice(0,100).map(l=>'<div class="les"><span>⬜ '+esc(l.title)+'</span></div>').join('')+
+    '</details>').join('');
+  return h+'</div>';
+}
 function renderImpPreview(P,err){
   const box=$('#impPreview'),btn=$('#impConfirmBtn');
   if(err){box.innerHTML='<div class="banner late">'+esc(err)+'</div>';btn.disabled=true;return;}
+  if(P.multi){
+    const sumL=P.items.reduce((acc,it)=>acc+it.chapters.reduce((a,c)=>a+c.lessons.length,0),0);
+    const sumC=P.items.reduce((acc,it)=>acc+it.chapters.length,0);
+    let h='<div class="banner info">تم اكتشاف <b>'+P.items.length+' مواد مستقلة</b> ('+sumC+' شابتر — '+sumL+' درس) وسيُنشأ لكل مادة بلوك مستقل.</div>';
+    h+=P.items.map((it,idx)=>renderBlockHtml(it,0,idx===0?($('#impName').value||it.name):it.name,$('#impMonths').value)).join('');
+    box.innerHTML=h; btn.disabled=false; return;
+  }
   const nL=P.chapters.reduce((a,c)=>a+c.lessons.length,0);
   const tv=$('#impTarget').value,s=tv==='new'?null:subj(tv);
   let where;
   if(!s){
     const nm=($('#impName').value||P.name||'').trim();
-    where='سيتم إنشاء <b>مادة جديدة</b>'+(nm?' باسم «'+esc(nm)+'»':' (اكتبي اسمها في الحقل أعلاه)')+'.';
+    const mVal=$('#impMonths').value!==''?clamp(parseInt($('#impMonths').value)||0,0,24):(P.studyMonths!==null&&P.studyMonths!==undefined?P.studyMonths:3);
+    where='سيتم إنشاء <b>مادة جديدة</b>'+(nm?' باسم «'+esc(nm)+'»':' (اكتبي اسمها في الحقل أعلاه)')+' • <b>'+monthsLabel(mVal)+'</b>.';
   }else{
     const tot=totalLessons(s),p=progOf(s);
     where='ستُضاف في آخر مادة <b>«'+esc(s.name)+'»</b> (فيها الآن '+s.chapters.length+' شابتر و'+tot+' درس، أنجزتِ منها '+p+').';
   }
   const base=s?s.chapters.length:0;
   let h='<div class="banner info"><b>'+P.chapters.length+' شابتر — '+nL+' درس</b><br>'+where+'</div>';
-  if(P.warn.length) h+='<div class="banner">⚠️ '+P.warn.map(esc).join('<br>⚠️ ')+'</div>';
-  h+=P.chapters.slice(0,40).map((c,i)=>
-    '<details class="chap"><summary>'+(c.title?esc(c.title):'<span class="small">(بدون اسم، سيُسمّى «شابتر '+(base+i+1)+'»)</span>')+
-    ' <span class="small">('+c.lessons.length+' درس)</span></summary>'+
-    c.lessons.slice(0,100).map(l=>'<div class="les"><span>⬜ '+esc(l.title)+'</span></div>').join('')+
-    '</details>').join('');
+  h+=renderBlockHtml(P,base,nm||'',$('#impMonths').value);
   box.innerHTML=h; btn.disabled=false;
 }
 function runImportPreview(){
@@ -1360,7 +1531,8 @@ function runImportPreview(){
   const P=parseImport(raw);
   if(P.err){impParsed=null;renderImpPreview(null,P.err);return;}
   impParsed=P;
-  if($('#impTarget').value==='new'&&!$('#impName').value.trim()&&P.name) $('#impName').value=P.name;
+  const firstName=P.multi?(P.items[0]&&P.items[0].name):P.name;
+  if($('#impTarget').value==='new'&&!$('#impName').value.trim()&&firstName) $('#impName').value=firstName;
   renderImpPreview(P);
 }
 function clearImport(){
@@ -1370,9 +1542,9 @@ function clearImport(){
 }
 function confirmImport(){
   if(!impParsed){toast('اعملي معاينة أولاً');return;}
-  const r=applyImport(impParsed,$('#impTarget').value,$('#impName').value,$('#impPace').value);
+  const r=applyImport(impParsed,$('#impTarget').value,$('#impName').value,$('#impPace').value,$('#impMonths').value);
   if(r.err){toast(r.err);return;}
-  toast('تم استيراد '+r.ch+' شابتر و'+r.ls+' درس ✅');
+  toast(r.multi?('تم إنشاء '+r.created+' مواد ('+r.ch+' شابتر و'+r.ls+' درس) ✅'):('تم استيراد '+r.ch+' شابتر و'+r.ls+' درس ✅'));
   clearImport(); renderAll();
 }
 function downloadText(name,text,type){
@@ -1381,16 +1553,21 @@ function downloadText(name,text,type){
   document.body.appendChild(a); a.click(); a.remove();
   setTimeout(()=>URL.revokeObjectURL(a.href),1000);
 }
-const IMP_SAMPLE_TXT=['المادة: أساسيات الشبكات','الإيقاع: 1','','# الفصل الأول: مقدمة','ما هي الشبكة؟','أنواع الشبكات','',
-  'شابتر: نموذج OSI','الطبقة الفيزيائية','طبقة الرابط'].join('\n');
-const IMP_SAMPLE_JSON=JSON.stringify({name:'أساسيات الشبكات',pace:1,chapters:[
-  {title:'مقدمة',lessons:['ما هي الشبكة؟',{title:'أنواع الشبكات',prep:'راجعي المصطلحات'}]}]},null,2);
+const IMP_SAMPLE_TXT=['المادة: Python Fundamentals','الإيقاع: 1','المدة: 3','# الفصل الأول','درس بايثون 1','درس بايثون 2','',
+  'المادة: C Programming','الإيقاع: 1','المدة: 3','# الفصل الأول','درس سي 1','درس سي 2'].join('\n');
+const IMP_SAMPLE_JSON=JSON.stringify({subjects:[
+  {name:'Python Fundamentals',pace:1,studyMonths:3,chapters:[{title:'الفصل الأول',lessons:['درس بايثون 1']}]},
+  {name:'C Programming',pace:1,studyMonths:3,chapters:[{title:'الفصل الأول',lessons:['درس سي 1']}]}
+]},null,2);
 
 function bindImport(){
   const g=id=>document.getElementById(id);
   if(!g('importCard')) return;
   g('impTarget').addEventListener('change',()=>{
     g('impNewBox').style.display=g('impTarget').value==='new'?'block':'none';
+    if(g('impText').value.trim()) runImportPreview();
+  });
+  g('impMonths').addEventListener('change',()=>{
     if(g('impText').value.trim()) runImportPreview();
   });
   g('impText').addEventListener('input',()=>{impParsed=null;g('impConfirmBtn').disabled=true;g('impPreview').innerHTML='';});
