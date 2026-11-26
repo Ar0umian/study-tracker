@@ -207,6 +207,9 @@ window.FIREBASE_CONFIG = {
           <option value="6">6 أشهر</option>
           <option value="0">مفتوحة (بلا مدة انتهاء دراسة)</option>
         </select>
+        <label>تاريخ بدء المادة (اختياري)</label>
+        <input id="impStart" type="date">
+        <p class="small">اتركيه فارغاً لتبدأ المادة من اليوم (أو من الملف إن كان فيه تاريخ). مثال: 1 فبراير 2027 مع مدة 3 أشهر تظهر دروسها من ذلك اليوم وحتى 1 مايو 2027.</p>
       </div>
       <label>ارفعي ملف ‎.txt‎ أو ‎.json</label>
       <input id="impFile" type="file" accept=".txt,.json,text/plain,application/json">
@@ -244,7 +247,7 @@ window.FIREBASE_CONFIG = {
       <div id="calGrid" class="cal-grid"></div>
       <div class="legend">
         <span>✅ منجز</span><span>📍 اليوم</span><span>📅 مجدول</span>
-        <span>⏳ فائت</span><span>🌿 الجمعة خفيف</span><span>🔄 السبت مراجعة أسبوعية</span>
+        <span>⏳ فائت</span><span>🌿 الجمعة خفيف</span><span>🔄 السبت مراجعة أسبوعية</span><span>🚀 بداية مادة</span><span>🏁 آخر يوم دروس جديدة</span>
       </div>
     </div>
     <div class="card" id="dayDetail"><span class="small">اضغطي على أي يوم لعرض تفاصيله.</span></div>
@@ -789,9 +792,33 @@ function isStudyExpiredOn(s,date){
   if(!end) return false;
   return date>end;
 }
+/* STUDY_START_FEATURE: تاريخ بدء كل مادة (لا تظهر دروسها قبله)، والمدة تُحسب منه */
+const ISO_RE=/^\d{4}-\d{2}-\d{2}$/;
+function defaultStudyStart(){const a=state.settings.startDate||todayStr(),b=todayStr();return a>b?a:b;}
+function isNotStartedOn(s,date){return !!(s&&s.studyStart&&date<s.studyStart);}
 function canScheduleNewOn(s,date){
   if(!s||s.status==='paused') return false;
+  if(isNotStartedOn(s,date)) return false;
   return !isStudyExpiredOn(s,date);
+}
+function setStudyStart(sid,v){
+  const s=subj(sid); if(!s||!ISO_RE.test(v||'')) return false;
+  s.studyStart=v; structChanged(); return true;
+}
+/* تاريخ بصيغ مرنة: 2027-02-01 أو 2027/2/1 أو بالأرقام العربية */
+function normDateStr(x){
+  const t=String(x==null?'':x).replace(/[٠-٩]/g,d=>'٠١٢٣٤٥٦٧٨٩'.indexOf(d)).trim().replace(/[\/.]/g,'-');
+  const m=t.match(/^(\d{4})-(\d{1,2})-(\d{1,2})$/); if(!m) return null;
+  const mo=+m[2],dy=+m[3]; if(mo<1||mo>12||dy<1||dy>31) return null;
+  return m[1]+'-'+String(mo).padStart(2,'0')+'-'+String(dy).padStart(2,'0');
+}
+function startHint(s){
+  if(!s.studyStart) return '';
+  let h='تبدأ '+fmtAr(s.studyStart);
+  const end=studyEndDate(s);
+  if(end) h+=' — وتنتهي دروسها الجديدة '+fmtAr(end);
+  if(dow(s.studyStart)>0&&dow(s.studyStart)<=4) h+='<br>⚠️ تبدأ في منتصف الأسبوع، فيُضغط شابتر الأسبوع الأول في الأيام المتبقية. اختاري يوم أحد لبداية أهدأ.';
+  return h;
 }
 
 function cloneS(S){
@@ -1199,6 +1226,7 @@ const monthsLabel=m=>!m?'مدة مفتوحة':(m===1?'شهر واحد':(m===2?'�
 function subjBadge(s,onDate){
   const tot=totalLessons(s),p=progOf(s);
   if(s.status==='paused') return '<span class="tag amber">متوقفة مؤقتاً</span>';
+  if(isNotStartedOn(s,onDate||todayStr())) return '<span class="tag amber">🗓️ تبدأ '+shortAr(s.studyStart)+' '+parseDate(s.studyStart).getFullYear()+'</span>';
   if(isStudyExpiredOn(s,onDate||todayStr())) return '<span class="tag violet">مرحلة مراجعة مستمرة</span>';
   if(tot&&p>=tot) return '<span class="tag violet">منتهية: مراجعة وتكرار متباعد</span>';
   return '<span class="tag teal">قيد الدراسة</span>';
@@ -1247,6 +1275,7 @@ function goalsCard(){
     const tot=totalLessons(s); if(!tot) return;
     const p=progOf(s);
     if(s.status==='paused'){rows.push([esc(s.name),'<span class="tag amber">متوقفة مؤقتاً</span>']);return;}
+    if(isNotStartedOn(s,t)){rows.push([esc(s.name),'<span class="tag amber">🗓️ تبدأ '+fmtAr(s.studyStart)+'</span>']);return;}
     if(isStudyExpiredOn(s,t)){
       const endD=studyEndDate(s);
       rows.push([esc(s.name),'<span class="tag violet">انتهت مدة الدراسة ('+endD+') — مراجعة مستمرة</span>']);
@@ -1377,9 +1406,12 @@ function renderSubjects(){
         '<div class="subj-head"><h3><span class="chev">◀</span> '+esc(s.name)+'</h3>'+
         '<span>'+subjBadge(s,t)+'</span></div>'+
         '<div class="bar"><i style="width:'+pct+'%"></i></div>'+
-        '<div class="small">'+p+' من '+tot+' درس ('+pct+'%) — '+s.chapters.length+' شباتر • '+durInfo+'</div>'+
+        '<div class="small">'+p+' من '+tot+' درس ('+pct+'%) — '+s.chapters.length+' شباتر • '+durInfo+(s.studyStart?' • البداية: '+s.studyStart:'')+'</div>'+
       '</summary>'+
       '<div class="subj-body">'+
+        '<div class="start-row"><label>📅 تاريخ بدء المادة (لا تظهر دروسها في الجدول والتقويم قبله)</label>'+
+        '<input type="date" data-start="'+s.id+'" value="'+esc(s.studyStart||'')+'" style="max-width:220px">'+
+        '<div class="small" style="margin-top:4px">'+startHint(s)+'</div></div>'+
         '<div class="actions">'+
           '<select data-pace="'+s.id+'" style="width:auto">'+paceOpts+'</select>'+
           '<select data-months="'+s.id+'" style="width:auto">'+monthOpts+'</select>'+
@@ -1435,6 +1467,9 @@ function renderCalendar(){
     const meta=[];
     if(newCount) meta.push('جديد:'+newCount);
     if(dueCount) meta.push('مراجعة:'+dueCount);
+    const stS=state.subjects.filter(s=>s.studyStart===d),enS=state.subjects.filter(s=>studyEndDate(s)===d);
+    if(stS.length) meta.push('🚀 '+(stS.length>1?stS.length+' مواد':esc(stS[0].name.slice(0,12))));
+    if(enS.length) meta.push('🏁 '+(enS.length>1?enS.length+' مواد':esc(enS[0].name.slice(0,12))));
     html+='<div class="'+cls.join(' ')+'" data-date="'+d+'">'+
       '<div><span class="n">'+parseDate(d).getDate()+'</span><div class="meta">'+meta.join(' • ')+'</div></div>'+
       '<span class="ic">'+ICONS[info.status]+'</span></div>';
@@ -1449,6 +1484,9 @@ function renderDayDetail(){
   const info=dayInfo(selDate,null);
   const tagCls=info.status==='late'?'red':(info.status==='sat'?'violet':(info.status==='fri'?'teal':'amber'));
   let html='<h3>'+fmtAr(selDate)+' <span class="tag '+tagCls+'">'+STATUS_AR[info.status]+'</span></h3>';
+  const stD=state.subjects.filter(s=>s.studyStart===selDate),enD=state.subjects.filter(s=>studyEndDate(s)===selDate);
+  stD.forEach(s=>{html+='<div class="banner info">🚀 تبدأ اليوم مادة <b>'+esc(s.name)+'</b> — '+monthsLabel(s.studyMonths)+'</div>';});
+  enD.forEach(s=>{html+='<div class="banner">🏁 آخر يوم للدروس الجديدة في مادة <b>'+esc(s.name)+'</b>، وبعده تنتقل للمراجعة المستمرة.</div>';});
   const due=dueLessonsOn(selDate);
   html+=secTitle('🧠 دروس مستحقة للتكرار المتباعد ('+due.length+')')+simpleList(due,'لا توجد دروس مجدولة للتكرار المتباعد في هذا اليوم.');
 
@@ -1567,7 +1605,13 @@ function bindSubjects(){
     const paceSel=e.target.closest('select[data-pace]');
     if(paceSel){setPace(paceSel.dataset.pace,paceSel.value); toast('تم تعديل الإيقاع، وأُعيد حساب الجدول'); renderAll(); return;}
     const mSel=e.target.closest('select[data-months]');
-    if(mSel){setStudyMonths(mSel.dataset.months,mSel.value); toast('تم تحديث مدة دراسة المادة'); renderAll();}
+    if(mSel){setStudyMonths(mSel.dataset.months,mSel.value); toast('تم تحديث مدة دراسة المادة'); renderAll(); return;}
+    const stI=e.target.closest('input[data-start]');
+    if(stI){
+      if(setStudyStart(stI.dataset.start,stI.value)) toast('تم تحديث تاريخ بدء المادة، وأُعيد حساب الجدول');
+      else toast('اختاري تاريخاً صحيحاً');
+      renderAll();
+    }
   });
 
   box.addEventListener('click',e=>{
@@ -1661,15 +1705,17 @@ const RE_CH=/^(?:#{1,6}\s+|(?:الشابتر|شابتر|الفصل|فصل|chapte
 const RE_SUB=/^(?:المادة|مادة|subject|course)\s*[:：]\s*(.+)$/i;
 const RE_PACE=/^(?:الإيقاع|الايقاع|pace)\s*[:：]\s*([0-9٠-٩]+)/i;
 const RE_MONTHS=/^(?:المدة|مدة|الأشهر|الاشهر|months)\s*[:：]\s*([0-9٠-٩]+)/i;
+const RE_START=/^(?:تاريخ البدء|تاريخ البداية|البداية|البدء|بداية|start(?:\s*date)?)\s*[:：]\s*(.+)$/i;
 
 function parseSingleTxtBlock(text){
-  const chapters=[],warn=[]; let cur=null,name='',pace=0,studyMonths=null,implicit=false;
+  const chapters=[],warn=[]; let cur=null,name='',pace=0,studyMonths=null,studyStart=null,implicit=false;
   text.split(/\r?\n/).forEach(line=>{
     const ln=line.trim(); if(!ln||/^-{3,}$/.test(ln)) return;
     let m;
     if((m=ln.match(RE_SUB))){name=m[1].trim();return;}
     if((m=ln.match(RE_PACE))){pace=parseInt(toEn(m[1]))||0;return;}
     if((m=ln.match(RE_MONTHS))){studyMonths=clamp(parseInt(toEn(m[1]))||0,0,24);return;}
+    if((m=ln.match(RE_START))){const dv=normDateStr(m[1]); if(dv) studyStart=dv; else warn.push('تاريخ البدء غير مفهوم: «'+m[1].trim()+'» (استخدمي الصيغة 2027-02-01)'); return;}
     if((m=ln.match(RE_CH))){cur={title:m[1].trim().slice(0,200),lessons:[]};chapters.push(cur);return;}
     const t=impClean(ln); if(!t) return;
     if(!cur){cur={title:'',lessons:[]};chapters.push(cur);implicit=true;}
@@ -1679,7 +1725,7 @@ function parseSingleTxtBlock(text){
   if(implicit) warn.push('وُجدت دروس قبل أول عنوان شابتر، فوُضعت في شابتر باسم تلقائي');
   if(empty) warn.push('تم تجاهل '+empty+' شابتر بلا دروس');
   if(!ok.length) return {err:'لم أجد أي شابتر أو دروس في هذا البلوك'};
-  return {name,pace:clamp(pace,0,4),studyMonths,chapters:ok,warn};
+  return {name,pace:clamp(pace,0,4),studyMonths,studyStart,chapters:ok,warn};
 }
 
 function parseImportTxt(text){
@@ -1722,7 +1768,7 @@ function parseImportJSON(o){
     }
     return {multi:true,items};
   }
-  const warn=[]; let name='',pace=0,studyMonths=null,chs;
+  const warn=[]; let name='',pace=0,studyMonths=null,studyStart=null,chs;
   if(Array.isArray(o)) chs=o;
   else if(o&&typeof o==='object'){
     name=String(o.name||o.subject||o.title||'').trim();
@@ -1731,6 +1777,8 @@ function parseImportJSON(o){
       const rawM=o.studyMonths!==undefined?o.studyMonths:o.months;
       studyMonths=clamp(parseInt(rawM)||0,0,24);
     }
+    const rawS=o.studyStart!==undefined?o.studyStart:(o.startDate!==undefined?o.startDate:o.start);
+    if(rawS!==undefined){studyStart=normDateStr(rawS); if(!studyStart) warn.push('تاريخ البدء غير مفهوم: «'+rawS+'»');}
     chs=o.chapters;
     if(!Array.isArray(chs)) return {err:'لم أجد مصفوفة الشباتر: يجب أن يحتوي الملف على المفتاح "chapters"'};
   }else return {err:'بنية JSON غير مدعومة'};
@@ -1752,7 +1800,7 @@ function parseImportJSON(o){
   });
   if(empty) warn.push('تم تجاهل '+empty+' شابتر بلا دروس');
   if(!chapters.length) return {err:'لا توجد شباتر ودروس صالحة في الملف'};
-  return {name,pace:clamp(pace,0,4),studyMonths,chapters,warn};
+  return {name,pace:clamp(pace,0,4),studyMonths,studyStart,chapters,warn};
 }
 function parseImport(raw){
   const text=String(raw||'').replace(/^\uFEFF/,'').trim();
@@ -1764,6 +1812,12 @@ function parseImport(raw){
   return parseImportTxt(text);
 }
 
+function importStartFor(P){
+  const el=document.getElementById('impStart');
+  if(el&&ISO_RE.test(el.value||'')) return el.value;
+  if(P&&P.studyStart&&ISO_RE.test(P.studyStart)) return P.studyStart;
+  return defaultStudyStart();
+}
 function applySingleImport(P,target,name,pace,monthsSel){
   let s;
   if(target==='new'){
@@ -1777,7 +1831,7 @@ function applySingleImport(P,target,name,pace,monthsSel){
       id:'s'+seq,seq,name,
       pace:clamp(parseInt(pace)||parseInt(P.pace)||1,1,4),
       studyMonths,
-      studyStart:state.settings.startDate||todayStr(),
+      studyStart:importStartFor(P),
       status:'active',
       chapters:[]
     };
@@ -1830,7 +1884,7 @@ function renderBlockHtml(P,baseChapIdx,overrideName,overrideMonths){
   const mVal=(overrideMonths!==''&&overrideMonths!==undefined&&overrideMonths!==null)
     ?clamp(parseInt(overrideMonths)||0,0,24)
     :(P.studyMonths!==null&&P.studyMonths!==undefined?P.studyMonths:3);
-  let h='<div class="imp-block"><b>📘 '+esc(nm)+'</b> <span class="tag">'+monthsLabel(mVal)+'</span> <span class="small">('+P.chapters.length+' شابتر — '+nL+' درس)</span>';
+  let h='<div class="imp-block"><b>📘 '+esc(nm)+'</b> <span class="tag">'+monthsLabel(mVal)+'</span>'+((P.__multi||(($('#impTarget')||{}).value==='new'))?' <span class="tag amber">🗓️ تبدأ '+importStartFor(P)+'</span>':'')+' <span class="small">('+P.chapters.length+' شابتر — '+nL+' درس)</span>';
   if(P.warn&&P.warn.length) h+='<div class="banner" style="margin-top:8px">⚠️ '+P.warn.map(esc).join('<br>⚠️ ')+'</div>';
   h+=P.chapters.slice(0,40).map((c,i)=>
     '<details class="chap"><summary>'+(c.title?esc(c.title):'<span class="small">(بدون اسم، سيُسمّى «شابتر '+(baseChapIdx+i+1)+'»)</span>')+
@@ -1846,6 +1900,7 @@ function renderImpPreview(P,err){
     const sumL=P.items.reduce((acc,it)=>acc+it.chapters.reduce((a,c)=>a+c.lessons.length,0),0);
     const sumC=P.items.reduce((acc,it)=>acc+it.chapters.length,0);
     let h='<div class="banner info">تم اكتشاف <b>'+P.items.length+' مواد مستقلة</b> ('+sumC+' شابتر — '+sumL+' درس) وسيُنشأ لكل مادة بلوك مستقل.</div>';
+    P.items.forEach(it=>{it.__multi=true;});
     h+=P.items.map((it,idx)=>renderBlockHtml(it,0,idx===0?($('#impName').value||it.name):it.name,$('#impMonths').value)).join('');
     box.innerHTML=h; btn.disabled=false; return;
   }
@@ -1877,7 +1932,7 @@ function runImportPreview(){
 }
 function clearImport(){
   impParsed=null;
-  ['impText','impName','impFile'].forEach(id=>{const e=document.getElementById(id); if(e) e.value='';});
+  ['impText','impName','impFile','impStart'].forEach(id=>{const e=document.getElementById(id); if(e) e.value='';});
   $('#impPreview').innerHTML=''; $('#impConfirmBtn').disabled=true;
 }
 function confirmImport(){
@@ -1908,6 +1963,9 @@ function bindImport(){
     if(g('impText').value.trim()) runImportPreview();
   });
   g('impMonths').addEventListener('change',()=>{
+    if(g('impText').value.trim()) runImportPreview();
+  });
+  g('impStart').addEventListener('change',()=>{
     if(g('impText').value.trim()) runImportPreview();
   });
   g('impText').addEventListener('input',()=>{impParsed=null;g('impConfirmBtn').disabled=true;g('impPreview').innerHTML='';});
